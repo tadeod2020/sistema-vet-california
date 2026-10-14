@@ -6,6 +6,7 @@ import { PatientsAndClients } from './components/PatientsAndClients';
 import { Rescues } from './components/Rescues';
 import { Surgeries } from './components/Surgeries';
 import { VaccinationPassport } from './components/VaccinationPassport';
+import { Cages } from './components/Cages';
 import { 
   CheckCircle2, 
   AlertCircle, 
@@ -28,6 +29,7 @@ function MainContent() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {activeTab === 'agenda' && <Agenda />}
         {activeTab === 'clients' && <PatientsAndClients />}
+        {activeTab === 'cages' && <Cages />}
         {activeTab === 'rescues' && <Rescues />}
         {activeTab === 'surgeries' && <Surgeries />}
         {activeTab === 'passport' && <VaccinationPassport />}

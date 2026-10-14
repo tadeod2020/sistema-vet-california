@@ -356,5 +356,109 @@ export const INITIAL_DATA = {
       isTravelValid: true,
       notes: "Campaña de vacunación"
     }
+  ],
+
+  // Jaulas / Caniles / Hospitalización
+  cages: [
+    {
+      id: "cage-1",
+      code: "J-01",
+      name: "Jaula Grande 01",
+      size: "Grande (Perros >25kg)",
+      zone: "Hospitalización General",
+      status: "Ocupada", // Disponible, Ocupada, Necesita Limpieza, Mantenimiento
+      currentOccupant: {
+        patientName: "Thor (Golden)",
+        ownerName: "Lic. Carlos Mendoza",
+        reason: "Recuperación post-profilaxis dental e hidratación",
+        intakeTime: "Hoy 10:15 AM",
+        specialCare: "Suero fisiológico IV 30ml/h, dieta blanda a las 18:00 hrs."
+      },
+      lastCleaned: "2026-10-14 08:30"
+    },
+    {
+      id: "cage-2",
+      code: "J-02",
+      name: "Jaula Mediana 02",
+      size: "Mediana (Perros 10-25kg)",
+      zone: "Hospitalización General",
+      status: "Ocupada",
+      currentOccupant: {
+        patientName: "Canela (Mestizo)",
+        ownerName: "Carmen Villalobos",
+        reason: "Monitoreo post-quirúrgico esterilización (OVH)",
+        intakeTime: "Hoy 09:30 AM",
+        specialCare: "Revisar vendaje abdominal cada 2 hrs, mantener cono isabelino."
+      },
+      lastCleaned: "2026-10-14 08:00"
+    },
+    {
+      id: "cage-3",
+      code: "J-03",
+      name: "Jaula Mediana 03",
+      size: "Mediana (Perros 10-25kg)",
+      zone: "Área de Rescates",
+      status: "Ocupada",
+      currentOccupant: {
+        patientName: "RES-2026-001 (Mestizo Canela)",
+        ownerName: "Rescate Callejero",
+        reason: "Cicatrización de cojinete y tratamiento antibiótico",
+        intakeTime: "2026-10-10",
+        specialCare: "Curación tópica diaria con spray antiséptico."
+      },
+      lastCleaned: "2026-10-13 19:00"
+    },
+    {
+      id: "cage-4",
+      code: "J-04",
+      name: "Jaula Chica 04",
+      size: "Chica (Gatos / Perros pequeños)",
+      zone: "Área de Rescates",
+      status: "Necesita Limpieza",
+      currentOccupant: null,
+      lastCleaned: "2026-10-13 11:00",
+      cleaningNotes: "Cachorro dado de alta. Requiere desinfección profunda con amonio cuaternario y tapete limpio."
+    },
+    {
+      id: "cage-5",
+      code: "J-05",
+      name: "Jaula Grande 05",
+      size: "Grande (Perros >25kg)",
+      zone: "Recuperación Quirófano",
+      status: "Disponible",
+      currentOccupant: null,
+      lastCleaned: "Hoy 09:00 AM"
+    },
+    {
+      id: "cage-6",
+      code: "J-06",
+      name: "Jaula Mediana 06",
+      size: "Mediana (Perros 10-25kg)",
+      zone: "Recuperación Quirófano",
+      status: "Disponible",
+      currentOccupant: null,
+      lastCleaned: "Hoy 09:15 AM"
+    },
+    {
+      id: "cage-7",
+      code: "J-07",
+      name: "Jaula Chica 07",
+      size: "Chica (Gatos)",
+      zone: "Hospitalización Felina",
+      status: "Disponible",
+      currentOccupant: null,
+      lastCleaned: "Hoy 08:45 AM"
+    },
+    {
+      id: "cage-8",
+      code: "J-08",
+      name: "Jaula Aislamiento A-1",
+      size: "Mediana",
+      zone: "Aislamiento Infeccioso",
+      status: "Necesita Limpieza",
+      currentOccupant: null,
+      lastCleaned: "2026-10-12",
+      cleaningNotes: "Desinfección obligatoria con cloro diluido y recambio total de sábanas."
+    }
   ]
 };

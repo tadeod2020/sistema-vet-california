@@ -7,6 +7,7 @@ import {
   HeartHandshake, 
   Activity, 
   FileText, 
+  Home,
   Download, 
   RotateCcw,
   MessageCircle,
@@ -14,15 +15,17 @@ import {
 } from 'lucide-react';
 
 export function Navbar() {
-  const { activeTab, setActiveTab, exportBackup, resetToDefaults, appointments, rescues } = useApp();
+  const { activeTab, setActiveTab, exportBackup, resetToDefaults, appointments, rescues, cages = [] } = useApp();
 
   const todayStr = new Date().toISOString().split('T')[0];
   const todayAptsCount = appointments.filter(a => a.date === todayStr && a.status !== 'Cancelada').length;
   const activeRescuesCount = rescues.filter(r => r.healthStatus !== 'Adoptado').length;
+  const needsCleaningCount = cages.filter(c => c.status === 'Necesita Limpieza').length;
 
   const tabs = [
     { id: 'agenda', label: 'Agenda de Citas', icon: CalendarDays, badge: todayAptsCount > 0 ? `${todayAptsCount} hoy` : null },
     { id: 'clients', label: 'Clientes & Mascotas', icon: Users, badge: 'Frecuentes' },
+    { id: 'cages', label: 'Jaulas & Hospital', icon: Home, badge: needsCleaningCount > 0 ? `${needsCleaningCount} x aseo` : null },
     { id: 'rescues', label: 'Rescates Callejeros', icon: HeartHandshake, badge: activeRescuesCount > 0 ? `${activeRescuesCount} activos` : null },
     { id: 'surgeries', label: 'Cirugías', icon: Activity },
     { id: 'passport', label: 'Cartilla & Pasaporte', icon: FileText, badge: 'Bilingüe' },

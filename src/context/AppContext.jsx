@@ -10,7 +10,12 @@ export function AppProvider({ children }) {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return {
+          ...INITIAL_DATA,
+          ...parsed,
+          cages: parsed.cages && parsed.cages.length > 0 ? parsed.cages : INITIAL_DATA.cages
+        };
       }
     } catch (e) {
       console.error('Error loading saved state:', e);
@@ -221,6 +226,102 @@ export function AppProvider({ children }) {
     return created;
   };
 
+  // Jaulas / Caniles / Hospitalización
+  const addCage = (newCage) => {
+    const created = {
+      ...newCage,
+      id: `cage-${Date.now()}`,
+      code: newCage.code || `J-${String((data.cages?.length || 0) + 1).padStart(2, '0')}`,
+      status: newCage.status || 'Disponible',
+      currentOccupant: null,
+      lastCleaned: 'Recién registrada'
+    };
+    setData(prev => ({ ...prev, cages: [...(prev.cages || []), created] }));
+    showToast(`Jaula ${created.code} agregada al inventario clínico`);
+    return created;
+  };
+
+  const assignPatientToCage = (cageId, occupantDetails) => {
+    setData(prev => ({
+      ...prev,
+      cages: (prev.cages || []).map(cage => {
+        if (cage.id === cageId) {
+          return {
+            ...cage,
+            status: 'Ocupada',
+            currentOccupant: {
+              ...occupantDetails,
+              intakeTime: occupantDetails.intakeTime || new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+            }
+          };
+        }
+        return cage;
+      })
+    }));
+    showToast(`Paciente ingresado en jaula exitosamente`);
+  };
+
+  const releaseCage = (cageId, markForCleaning = true) => {
+    setData(prev => ({
+      ...prev,
+      cages: (prev.cages || []).map(cage => {
+        if (cage.id === cageId) {
+          return {
+            ...cage,
+            status: markForCleaning ? 'Necesita Limpieza' : 'Disponible',
+            currentOccupant: null,
+            cleaningNotes: markForCleaning ? 'Alta reciente. Requiere desinfección profunda y cambio de tapete.' : undefined
+          };
+        }
+        return cage;
+      })
+    }));
+    showToast(markForCleaning ? 'Paciente dado de alta. Jaula marcada para limpieza.' : 'Paciente dado de alta. Jaula disponible.');
+  };
+
+  const markCageClean = (cageId) => {
+    setData(prev => ({
+      ...prev,
+      cages: (prev.cages || []).map(cage => {
+        if (cage.id === cageId) {
+          return {
+            ...cage,
+            status: 'Disponible',
+            cleaningNotes: undefined,
+            lastCleaned: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+          };
+        }
+        return cage;
+      })
+    }));
+    showToast('Jaula desinfectada y lista para nuevo paciente');
+  };
+
+  const updateCageStatus = (cageId, newStatus) => {
+    setData(prev => ({
+      ...prev,
+      cages: (prev.cages || []).map(cage => {
+        if (cage.id === cageId) {
+          return {
+            ...cage,
+            status: newStatus,
+            ...(newStatus === 'Disponible' ? { currentOccupant: null } : {})
+          };
+        }
+        return cage;
+      })
+    }));
+    showToast(`Estado de jaula actualizado a: ${newStatus}`);
+  };
+
+  const deleteCage = (cageId) => {
+    setData(prev => ({
+      ...prev,
+      cages: (prev.cages || []).filter(cage => cage.id !== cageId)
+    }));
+    showToast('Jaula eliminada del inventario', 'info');
+  };
+
   // Respaldos (Exportar / Importar)
   const exportBackup = () => {
     const jsonStr = JSON.stringify(data, null, 2);
@@ -279,6 +380,13 @@ export function AppProvider({ children }) {
         addSurgery,
         updateSurgeryStatus,
         addVaccination,
+        // Cages / Hospitalización
+        addCage,
+        assignPatientToCage,
+        releaseCage,
+        markCageClean,
+        updateCageStatus,
+        deleteCage,
         exportBackup,
         importBackup,
         resetToDefaults
