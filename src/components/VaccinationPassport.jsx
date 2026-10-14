@@ -3,7 +3,6 @@ import { useApp } from '../context/AppContext';
 import { 
   FileText, 
   Plus, 
-  Printer, 
   ShieldCheck, 
   Award, 
   Syringe, 
@@ -58,10 +57,6 @@ export function VaccinationPassport() {
   const petOwner = selectedPet ? clients.find(c => c.id === selectedPet.clientId) : null;
   const petVaccines = vaccinations.filter(v => v.petId === selectedPet?.id);
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   const handleCreateVaccine = (e) => {
     e.preventDefault();
     if (!selectedPet) return;
@@ -92,8 +87,8 @@ export function VaccinationPassport() {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner (hidden in print) */}
-      <div className="glass-card rounded-3xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 no-print">
+      {/* Top Banner */}
+      <div className="glass-card rounded-3xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-400 text-amber-950 flex items-center justify-center font-bold shadow-sm">
             <Plane className="w-6 h-6 text-rose-900" />
@@ -119,19 +114,11 @@ export function VaccinationPassport() {
             <Plus className="w-4 h-4 text-rose-900 stroke-[3]" />
             Aplicar Vacuna a Cartilla
           </button>
-
-          <button
-            onClick={handlePrint}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-amber-300 font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95"
-          >
-            <Printer className="w-4 h-4 text-amber-400" />
-            Imprimir Formato Completo
-          </button>
         </div>
       </div>
 
-      {/* Pet Selector and Page Navigation (hidden in print) */}
-      <div className="glass-card rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 no-print">
+      {/* Pet Selector and Page Navigation */}
+      <div className="glass-card rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
           <span className="text-xs font-bold text-slate-500 shrink-0">Mascota:</span>
           {pets.map(p => {
@@ -182,7 +169,7 @@ export function VaccinationPassport() {
       </div>
 
       {/* ========================================================================= */}
-      {/* OFFICIAL PHYSICAL BOOKLET REPRESENTATION (PRINTABLE) */}
+      {/* OFFICIAL PHYSICAL BOOKLET DIGITAL DISPLAY */}
       {/* ========================================================================= */}
       {selectedPet ? (
         <div className="space-y-8">
@@ -190,8 +177,8 @@ export function VaccinationPassport() {
           {/* ===================================================================== */}
           {/* SPREAD 1: INTERIOR 1 (Exact copy of carnet_interior_1.jpeg) */}
           {/* ===================================================================== */}
-          {(activeCarnetPage === 'spread' || typeof window !== 'undefined') && (
-            <div className={`passport-print-page bg-white rounded-3xl p-6 sm:p-10 shadow-xl border-2 border-slate-300 max-w-4xl mx-auto ${activeCarnetPage !== 'spread' ? 'hidden print:block' : 'block'}`}>
+          {activeCarnetPage === 'spread' && (
+            <div className="bg-white rounded-3xl p-6 sm:p-10 shadow-xl border-2 border-slate-300 max-w-4xl mx-auto">
               
               {/* TOP HALF: SERVICES WITH PAW PRINTS */}
               <div className="text-center border-b-2 border-slate-200 pb-8 mb-8">
@@ -382,7 +369,7 @@ export function VaccinationPassport() {
                         alt={selectedPet.name} 
                         className="w-full h-64 object-cover rounded-xl shadow-xs"
                       />
-                      <label className="mt-2 text-[10px] font-bold text-slate-500 hover:text-slate-800 cursor-pointer no-print flex items-center gap-1">
+                      <label className="mt-2 text-[10px] font-bold text-slate-500 hover:text-slate-800 cursor-pointer flex items-center gap-1">
                         <Camera className="w-3 h-3" /> Cambiar Fotografía
                         <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
                       </label>
@@ -396,7 +383,7 @@ export function VaccinationPassport() {
                         FOTOGRAFÍA DE LA MASCOTA
                         <span className="block text-[10px] text-slate-400 font-normal">PET PHOTO</span>
                       </div>
-                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xs rounded-xl shadow-xs cursor-pointer transition-all no-print">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xs rounded-xl shadow-xs cursor-pointer transition-all">
                         <Camera className="w-3.5 h-3.5" />
                         Subir Foto
                         <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
@@ -412,8 +399,8 @@ export function VaccinationPassport() {
           {/* SPREAD 2: INTERIOR 2 (Exact copy of carnet_interior_2.jpeg) */}
           {/* PROGRAMA DE VACUNACIÓN - VACCINATION (4 STICKER BOXES) */}
           {/* ===================================================================== */}
-          {(activeCarnetPage === 'vaccines' || typeof window !== 'undefined') && (
-            <div className={`passport-print-page bg-white rounded-3xl p-6 sm:p-10 shadow-xl border-2 border-slate-300 max-w-4xl mx-auto space-y-6 ${activeCarnetPage !== 'vaccines' ? 'hidden print:block' : 'block'}`}>
+          {activeCarnetPage === 'vaccines' && (
+            <div className="bg-white rounded-3xl p-6 sm:p-10 shadow-xl border-2 border-slate-300 max-w-4xl mx-auto space-y-6">
               
               <div className="text-center border-b-2 border-slate-200 pb-3">
                 <span className="inline-block px-5 py-1 rounded-full bg-slate-900 text-amber-400 font-black text-xs uppercase tracking-widest">
@@ -520,7 +507,7 @@ export function VaccinationPassport() {
               </div>
 
               {/* Action to add more vaccines */}
-              <div className="pt-2 flex justify-center no-print">
+              <div className="pt-2 flex justify-center">
                 <button
                   onClick={() => setIsVacModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 font-black text-xs rounded-xl shadow-xs transition-all active:scale-95"
@@ -535,8 +522,8 @@ export function VaccinationPassport() {
           {/* ===================================================================== */}
           {/* SPREAD 3: COVER & BACKCOVER (Exact copy of carnet_portada & contraportada) */}
           {/* ===================================================================== */}
-          {(activeCarnetPage === 'cover' || typeof window !== 'undefined') && (
-            <div className={`passport-print-page bg-gradient-to-b from-[#FFF066] via-[#FFDE33] to-[#FFD200] rounded-3xl p-8 sm:p-12 shadow-2xl border-4 border-[#7A1416] max-w-lg mx-auto text-center space-y-6 ${activeCarnetPage !== 'cover' ? 'hidden print:block' : 'block'}`}>
+          {activeCarnetPage === 'cover' && (
+            <div className="bg-gradient-to-b from-[#FFF066] via-[#FFDE33] to-[#FFD200] rounded-3xl p-8 sm:p-12 shadow-2xl border-4 border-[#7A1416] max-w-lg mx-auto text-center space-y-6">
               
               {/* Header Title */}
               <div className="border-b-2 border-[#7A1416]/40 pb-4">

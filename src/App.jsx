@@ -103,7 +103,7 @@ function MainContent() {
       )}
 
       {/* Footer with Branches and Physical Locations */}
-      <footer className="mt-auto border-t border-slate-200/80 bg-white/70 backdrop-blur-md py-6 text-xs text-slate-500 no-print">
+      <footer className="mt-auto border-t border-slate-200/80 bg-white/70 backdrop-blur-md py-6 text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-slate-900 text-sm">
