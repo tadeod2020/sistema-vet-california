@@ -39,7 +39,7 @@ export function Rescues() {
     type: 'Curación & Tratamiento',
     description: '',
     meds: '',
-    vet: 'Dr. Mario Estrada'
+    vet: 'Médico Veterinario de Turno'
   });
 
   const handleCreateRescue = (e) => {
@@ -60,7 +60,7 @@ export function Rescues() {
           date: new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }),
           type: 'Ingreso & Primeros Auxilios',
           description: rescueForm.initialIntervention,
-          vet: 'Dr. Mario Estrada',
+          vet: 'Médico Veterinario de Turno',
           meds: 'Desparasitante y analgésico de rescate'
         }
       ] : []
@@ -88,7 +88,7 @@ export function Rescues() {
       type: 'Curación & Tratamiento',
       description: '',
       meds: '',
-      vet: 'Dr. Mario Estrada'
+      vet: 'Médico Veterinario de Turno'
     });
   };
 
@@ -303,8 +303,8 @@ export function Rescues() {
 
       {/* Modal: Nuevo Rescate (Perro o gato sin nombre) */}
       {isNewRescueModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-slideUp">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 animate-slideUp max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-bold">
@@ -411,8 +411,8 @@ export function Rescues() {
 
       {/* Modal: Registrar Nueva Intervención a Rescate Activo */}
       {isInterventionModalOpen && activeRescue && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-slideUp">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 animate-slideUp max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-bold">
@@ -480,14 +480,16 @@ export function Rescues() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Veterinario Responsable</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Personal Médico Responsable</label>
                 <select
                   value={interventionForm.vet}
                   onChange={(e) => setInterventionForm(prev => ({ ...prev, vet: e.target.value }))}
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
                 >
-                  <option value="Dr. Mario Estrada">Dr. Mario Estrada (Céd. Prof. 8492019-BC)</option>
-                  <option value="Dra. Sofía Rincón">Dra. Sofía Rincón (Céd. Prof. 9102831-BC)</option>
+                  <option value="Médico Veterinario de Turno">Médico Veterinario de Turno</option>
+                  <option value="Personal Clínico California">Personal Clínico California</option>
+                  <option value="Especialista en Rehabilitación">Especialista en Rehabilitación</option>
+                  <option value="Atención General">Atención General</option>
                 </select>
               </div>
 

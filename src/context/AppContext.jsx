@@ -9,8 +9,8 @@ const AUTH_STORAGE_KEY = 'vet_california_auth_session';
 export const PROVISIONAL_CREDENTIALS = {
   email: 'admin@veterinariacalifornia.com',
   password: 'california2026',
-  name: 'Dr. Mario Estrada',
-  role: 'Médico Veterinario / Admin'
+  name: 'Administrador',
+  role: 'Personal Clínico Autorizado'
 };
 
 export function AppProvider({ children }) {

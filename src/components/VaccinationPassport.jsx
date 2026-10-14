@@ -48,7 +48,7 @@ export function VaccinationPassport() {
     lotNumber: 'RAB-2026-TJ',
     appliedDate: new Date().toISOString().split('T')[0],
     dueDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
-    vetName: 'Dr. Mario Estrada',
+    vetName: 'Médico Veterinario Autorizado',
     licenseNumber: 'CÉD. PROF. 8492019-BC',
     notes: 'Aprobado para cruce fronterizo EE.UU. / California CBP'
   });
@@ -489,7 +489,7 @@ export function VaccinationPassport() {
                       {/* Bottom: Signature line */}
                       <div className="pt-2 border-t border-slate-200 flex flex-col items-center">
                         <div className="font-serif italic text-xs text-[#7A1416] tracking-wide mb-0.5">
-                          {vaccine ? vaccine.vetName : 'Dr. Mario Estrada'}
+                          {vaccine?.vetName || 'Médico Veterinario Autorizado'}
                         </div>
                         <div className="w-full border-t border-slate-800"></div>
                         <span className="text-[9px] font-bold text-slate-600 uppercase mt-0.5">
@@ -587,8 +587,8 @@ export function VaccinationPassport() {
 
       {/* MODAL: REGISTRAR NUEVA VACUNA */}
       {isVacModalOpen && selectedPet && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-slideUp">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 animate-slideUp max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-bold">
@@ -671,18 +671,19 @@ export function VaccinationPassport() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Médico Veterinario</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Personal Veterinario</label>
                   <select
                     value={vacForm.vetName}
                     onChange={(e) => setVacForm(prev => ({ 
                       ...prev, 
                       vetName: e.target.value,
-                      licenseNumber: e.target.value.includes('Mario') ? 'CÉD. PROF. 8492019-BC' : 'CÉD. PROF. 9102831-BC'
+                      licenseNumber: 'CÉD. PROF. 8492019-BC'
                     }))}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
                   >
-                    <option value="Dr. Mario Estrada">Dr. Mario Estrada</option>
-                    <option value="Dra. Sofía Rincón">Dra. Sofía Rincón</option>
+                    <option value="Médico Veterinario Autorizado">Médico Veterinario Autorizado</option>
+                    <option value="Personal Clínico California">Personal Clínico California</option>
+                    <option value="Director Médico Veterinario">Director Médico Veterinario</option>
                   </select>
                 </div>
                 <div>

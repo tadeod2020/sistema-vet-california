@@ -33,7 +33,7 @@ export function Agenda() {
     clientName: "",
     petName: "",
     reason: "",
-    assignedVet: "Dr. Mario Estrada"
+    assignedVet: "Médico Veterinario de Guardia"
   });
 
   // Filter appointments for selected day
@@ -77,7 +77,7 @@ export function Agenda() {
         clientName: "",
         petName: "",
         reason: "",
-        assignedVet: "Dr. Mario Estrada"
+        assignedVet: "Médico Veterinario de Guardia"
       });
     }
   };
@@ -123,33 +123,35 @@ export function Agenda() {
         </div>
 
         {/* Date Selector with Next / Prev */}
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <button 
-            onClick={() => shiftDate(-1)} 
-            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
-            title="Día anterior"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full md:w-auto justify-between sm:justify-start">
+          <div className="flex items-center gap-1.5 flex-1 sm:flex-initial">
+            <button 
+              onClick={() => shiftDate(-1)} 
+              className="p-2 sm:p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors active:scale-95"
+              title="Día anterior"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
 
-          <input 
-            type="date" 
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="px-3.5 py-2 text-sm font-semibold text-slate-800 bg-white border border-slate-300 rounded-xl shadow-xs focus:ring-2 focus:ring-amber-400 focus:outline-none"
-          />
+            <input 
+              type="date" 
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="flex-1 sm:flex-initial px-3 sm:px-3.5 py-2 text-sm font-semibold text-slate-800 bg-white border border-slate-300 rounded-xl shadow-xs focus:ring-2 focus:ring-amber-400 focus:outline-none"
+            />
 
-          <button 
-            onClick={() => shiftDate(1)} 
-            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
-            title="Día siguiente"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
+            <button 
+              onClick={() => shiftDate(1)} 
+              className="p-2 sm:p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors active:scale-95"
+              title="Día siguiente"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
 
           <button
             onClick={() => openNewAptModal()}
-            className="ml-2 inline-flex items-center gap-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95 min-h-[40px] sm:min-h-0"
           >
             <Plus className="w-4 h-4 text-rose-900 stroke-[3]" />
             Nueva Cita
@@ -317,8 +319,8 @@ export function Agenda() {
 
       {/* Modal: Agendar Nueva Cita */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-slideUp">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 animate-slideUp max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-bold">
@@ -427,15 +429,17 @@ export function Agenda() {
               {/* Veterinario Asignado */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Médico Veterinario
+                  Personal Médico / Veterinario
                 </label>
                 <select
                   value={formData.assignedVet}
                   onChange={(e) => setFormData(prev => ({ ...prev, assignedVet: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
                 >
-                  <option value="Dr. Mario Estrada">Dr. Mario Estrada (Céd. Prof. 8492019-BC)</option>
-                  <option value="Dra. Sofía Rincón">Dra. Sofía Rincón (Céd. Prof. 9102831-BC)</option>
+                  <option value="Médico Veterinario de Guardia">Médico Veterinario de Guardia</option>
+                  <option value="Personal Clínico California">Personal Clínico California</option>
+                  <option value="Especialista en Consulta">Especialista en Consulta</option>
+                  <option value="Atención General">Atención General</option>
                 </select>
               </div>
 

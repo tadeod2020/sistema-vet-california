@@ -29,8 +29,8 @@ export function Surgeries() {
     patientType: 'Mascota con dueño',
     ownerName: '',
     procedure: 'Ovariohisterectomía (Esterilización)',
-    surgeon: 'Dr. Mario Estrada',
-    anesthetist: 'Dra. Sofía Rincón',
+    surgeon: 'Cirujano Titular',
+    anesthetist: 'Especialista en Anestesiología',
     date: new Date().toISOString().split('T')[0],
     anesthesiaType: 'Inhalatoria (Isoflurano) + Premedicación',
     preOpNotes: 'Ayuno de 10 horas confirmado. Hemograma básico en rangos normales.',
@@ -58,8 +58,8 @@ export function Surgeries() {
       patientType: 'Mascota con dueño',
       ownerName: '',
       procedure: 'Ovariohisterectomía (Esterilización)',
-      surgeon: 'Dr. Mario Estrada',
-      anesthetist: 'Dra. Sofía Rincón',
+      surgeon: 'Cirujano Titular',
+      anesthetist: 'Especialista en Anestesiología',
       date: new Date().toISOString().split('T')[0],
       anesthesiaType: 'Inhalatoria (Isoflurano) + Premedicación',
       preOpNotes: 'Ayuno de 10 horas confirmado. Hemograma básico en rangos normales.',
@@ -410,8 +410,9 @@ export function Surgeries() {
                     onChange={(e) => setForm(prev => ({ ...prev, surgeon: e.target.value }))}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
                   >
-                    <option value="Dr. Mario Estrada">Dr. Mario Estrada (Céd. Prof. 8492019-BC)</option>
-                    <option value="Dra. Sofía Rincón">Dra. Sofía Rincón (Céd. Prof. 9102831-BC)</option>
+                    <option value="Cirujano Titular">Cirujano Titular</option>
+                    <option value="Cirujano Especialista de Turno">Cirujano Especialista de Turno</option>
+                    <option value="Equipo Quirúrgico California">Equipo Quirúrgico California</option>
                   </select>
                 </div>
                 <div>

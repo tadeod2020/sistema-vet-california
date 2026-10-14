@@ -23,13 +23,13 @@ export function BrandLogo({ className = "w-10 h-10", showText = false, textClass
         </svg>
       </div>
       {showText && (
-        <div className="flex flex-col leading-tight">
-          <span className="font-extrabold text-base tracking-tight text-slate-900 flex items-center gap-1.5">
+        <div className="flex flex-col leading-tight min-w-0">
+          <span className="font-extrabold text-xs sm:text-sm md:text-base tracking-tight text-slate-900 flex items-center gap-1.5 truncate">
             SERVICIO VETERINARIO CALIFORNIA
-            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
           </span>
-          <span className="text-xs font-semibold text-rose-900 tracking-wide uppercase">
-            Tijuana, B.C. &bull; Passport to Travel &bull; Clínica & Rescates
+          <span className="text-[9px] sm:text-[11px] md:text-xs font-semibold text-rose-900 tracking-wide uppercase truncate">
+            Tijuana, B.C. &bull; Pasaporte de Viaje &bull; Clínica
           </span>
         </div>
       )}

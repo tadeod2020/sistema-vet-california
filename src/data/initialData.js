@@ -133,7 +133,7 @@ export const INITIAL_DATA = {
       petName: "Thor (Golden)",
       reason: "Certificado de Viaje (Passport to Travel) y refuerzo de Rabia",
       status: "Completada", // Pendiente, En Espera, En Consulta, Completada, Cancelada
-      assignedVet: "Dr. Mario Estrada",
+      assignedVet: "Médico Veterinario de Guardia",
       slotIndex: 1 // slot 1 de 2
     },
     {
@@ -144,7 +144,7 @@ export const INITIAL_DATA = {
       petName: "Canela (Mestizo)",
       reason: "Revisión post-operatoria de esterilización",
       status: "Completada",
-      assignedVet: "Dra. Sofía Rincón",
+      assignedVet: "Personal Clínico California",
       slotIndex: 2 // slot 2 de 2 -> ¡HORA LLENA!
     },
     {
@@ -155,7 +155,7 @@ export const INITIAL_DATA = {
       petName: "Rocky (Bulldog Francés)",
       reason: "Limpieza de oídos y vacuna Bordetella anual",
       status: "En Espera",
-      assignedVet: "Dr. Mario Estrada",
+      assignedVet: "Médico Veterinario de Guardia",
       slotIndex: 1
     },
     {
@@ -166,7 +166,7 @@ export const INITIAL_DATA = {
       petName: "Pelusa (Poodle)",
       reason: "Chequeo general y desparasitación externa (Bravecto)",
       status: "Pendiente",
-      assignedVet: "Dra. Sofía Rincón",
+      assignedVet: "Personal Clínico California",
       slotIndex: 1
     },
     {
@@ -177,7 +177,7 @@ export const INITIAL_DATA = {
       petName: "Perrito atropellado sin nombre",
       reason: "Curación de emergencia y vendaje",
       status: "Pendiente",
-      assignedVet: "Dr. Mario Estrada",
+      assignedVet: "Médico Veterinario de Guardia",
       slotIndex: 1
     }
   ],
@@ -198,21 +198,21 @@ export const INITIAL_DATA = {
           date: "2026-10-10 10:30",
           type: "Ingreso & Urgencia",
           description: "Limpieza de herida lacerante en cojinete delantero derecho. Se aplicó anestésico local, lavado con clorhexidina al 2% y vendaje acolchado.",
-          vet: "Dr. Mario Estrada",
+          vet: "Médico Veterinario de Guardia",
           meds: "Cefalexina 500mg c/12h por 7 días, Meloxicam 1ml oral c/24h por 3 días."
         },
         {
           date: "2026-10-12 16:00",
           type: "Desparasitación & Análisis",
           description: "Prueba rápida 4Dx negativa a erliquia y anaplasma. Desparasitación interna con Endovet.",
-          vet: "Dra. Sofía Rincón",
+          vet: "Personal Clínico California",
           meds: "Pipeta antipulgas Fipronil."
         },
         {
           date: "2026-10-14 09:15",
           type: "Revisión de herida",
           description: "Excelente cicatrización en cojinete. Retiro de vendaje, se deja expuesto con spray antiséptico cicatrizante.",
-          vet: "Dr. Mario Estrada",
+          vet: "Médico Veterinario de Guardia",
           meds: "Fin de antibioterapia en 3 días."
         }
       ]
@@ -231,14 +231,14 @@ export const INITIAL_DATA = {
           date: "2026-10-13 14:00",
           type: "Evaluación General & Desparasitación",
           description: "Temperatura 38.5°C normal, mucosas rosadas. Leve deshidratación revertida con suero oral. Baño medicado antipulgas.",
-          vet: "Dra. Sofía Rincón",
+          vet: "Personal Clínico California",
           meds: "Drontal Puppy 1ml."
         },
         {
           date: "2026-10-14 11:00",
           type: "Vacunación Inicial",
           description: "Aplicación de primera vacuna Puppy DP (Distemper y Parvovirus). Se emitió carnet preliminar.",
-          vet: "Dr. Mario Estrada",
+          vet: "Médico Veterinario de Guardia",
           meds: "Próximo refuerzo en 21 días."
         }
       ]
@@ -253,8 +253,8 @@ export const INITIAL_DATA = {
       patientType: "Mascota con dueño", // Mascota con dueño | Rescate
       ownerName: "Lic. Carlos Mendoza",
       procedure: "Profilaxis Dental Ultrasonica y Extracción de Premolar 104",
-      surgeon: "Dr. Mario Estrada",
-      anesthetist: "Dra. Sofía Rincón",
+      surgeon: "Médico Veterinario de Guardia",
+      anesthetist: "Personal Clínico California",
       date: "2026-10-08",
       anesthesiaType: "Inhalatoria (Isoflurano) + Premedicación Xilacina/Tramadol",
       preOpNotes: "Hemograma y química sanguínea de 6 elementos dentro de rangos normales. Ayuno de 10 horas confirmado.",
@@ -268,8 +268,8 @@ export const INITIAL_DATA = {
       patientType: "Mascota con dueño",
       ownerName: "Carmen Villalobos",
       procedure: "Ovariohisterectomía (Esterilización Preventiva)",
-      surgeon: "Dra. Sofía Rincón",
-      anesthetist: "Dr. Mario Estrada",
+      surgeon: "Personal Clínico California",
+      anesthetist: "Médico Veterinario de Guardia",
       date: "2026-10-09",
       anesthesiaType: "General Intravenosa (Tiletamina-Zolazepam) y Atropina",
       preOpNotes: "Paciente en condición corporal óptima 3/5, sin antecedentes de coagulopatía.",
@@ -283,8 +283,8 @@ export const INITIAL_DATA = {
       patientType: "Rescate",
       ownerName: "Refugio Zona Centro",
       procedure: "Orquiectomía (Castración) y Corrección de Entropión Ocular",
-      surgeon: "Dr. Mario Estrada",
-      anesthetist: "Dra. Sofía Rincón",
+      surgeon: "Médico Veterinario de Guardia",
+      anesthetist: "Personal Clínico California",
       date: "2026-10-15", // Programada para mañana
       anesthesiaType: "Inhalatoria con intubación endotraqueal",
       preOpNotes: "Programada a las 09:00 AM. Se requiere confirmar ayuno estricto desde las 22:00 hrs de hoy.",
@@ -306,7 +306,7 @@ export const INITIAL_DATA = {
       lotNumber: "RAB-78829-TJ",
       appliedDate: "2026-08-15",
       dueDate: "2027-08-15",
-      vetName: "Dr. Mario Estrada",
+      vetName: "Médico Veterinario de Guardia",
       licenseNumber: "CÉD. PROF. 8492019-BC",
       isTravelValid: true,
       notes: "Aprobada para cruce internacional EE.UU. / CBP California"
@@ -321,7 +321,7 @@ export const INITIAL_DATA = {
       lotNumber: "VAN-44120",
       appliedDate: "2026-08-15",
       dueDate: "2027-08-15",
-      vetName: "Dr. Mario Estrada",
+      vetName: "Médico Veterinario de Guardia",
       licenseNumber: "CÉD. PROF. 8492019-BC",
       isTravelValid: true,
       notes: "Refuerzo anual"
@@ -336,7 +336,7 @@ export const INITIAL_DATA = {
       lotNumber: "KC-91823",
       appliedDate: "2026-08-15",
       dueDate: "2027-08-15",
-      vetName: "Dr. Mario Estrada",
+      vetName: "Médico Veterinario de Guardia",
       licenseNumber: "CÉD. PROF. 8492019-BC",
       isTravelValid: true,
       notes: "Requisito para pensiones y cruce fronterizo"
@@ -351,7 +351,7 @@ export const INITIAL_DATA = {
       lotNumber: "RAB-61029",
       appliedDate: "2026-05-10",
       dueDate: "2027-05-10",
-      vetName: "Dra. Sofía Rincón",
+      vetName: "Personal Clínico California",
       licenseNumber: "CÉD. PROF. 9102831-BC",
       isTravelValid: true,
       notes: "Campaña de vacunación"
