@@ -18,7 +18,13 @@ export function AppProvider({ children }) {
     try {
       const savedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
       if (savedAuth) {
-        return JSON.parse(savedAuth);
+        const parsed = JSON.parse(savedAuth);
+        if (parsed?.name?.includes('Mario') || parsed?.name?.includes('Estrada')) {
+          parsed.name = 'Administrador';
+          parsed.role = 'Personal Clínico Autorizado';
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(parsed));
+        }
+        return parsed;
       }
     } catch (e) {
       console.error('Error loading auth session:', e);
