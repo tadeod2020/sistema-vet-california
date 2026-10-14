@@ -97,6 +97,62 @@ export function AppProvider({ children }) {
     return created;
   };
 
+  // Alta Directa de Mascota (Solo 3 campos obligatorios: petName, ownerName, ownerPhone)
+  const registerPetDirect = ({ petName, ownerName, ownerPhone, ...optionalFields }) => {
+    const cleanPhone = ownerPhone.trim();
+    const cleanNumbers = cleanPhone.replace(/\D/g, '');
+    
+    let existingClient = data.clients.find(c => 
+      (cleanNumbers && c.phone.replace(/\D/g, '') === cleanNumbers) ||
+      c.name.toLowerCase() === ownerName.trim().toLowerCase()
+    );
+
+    let updatedClients = data.clients;
+    let clientId;
+
+    if (existingClient) {
+      clientId = existingClient.id;
+    } else {
+      const newClient = {
+        id: `cli-${Date.now()}`,
+        name: ownerName.trim(),
+        phone: cleanPhone,
+        whatsapp: cleanNumbers.startsWith('52') ? cleanNumbers : `521${cleanNumbers}`,
+        email: optionalFields.ownerEmail || '',
+        address: optionalFields.ownerAddress || '',
+        isFrequent: false,
+        tag: 'Cliente Regular',
+        notes: ''
+      };
+      updatedClients = [newClient, ...data.clients];
+      clientId = newClient.id;
+    }
+
+    const newPet = {
+      id: `pet-${Date.now()}`,
+      clientId,
+      name: petName.trim(),
+      species: optionalFields.species || 'Canino',
+      breed: optionalFields.breed || 'Sin especificar',
+      ageYears: optionalFields.ageYears ? Number(optionalFields.ageYears) : 1,
+      sex: optionalFields.sex || 'Macho',
+      weightKg: optionalFields.weightKg ? Number(optionalFields.weightKg) : 0,
+      color: optionalFields.color || 'Sin especificar',
+      allergies: optionalFields.allergies || 'Ninguna conocida',
+      microchip: optionalFields.microchip || '',
+      notes: optionalFields.notes || ''
+    };
+
+    setData(prev => ({
+      ...prev,
+      clients: updatedClients,
+      pets: [newPet, ...prev.pets]
+    }));
+
+    showToast(`¡Mascota "${newPet.name}" y dueño "${ownerName}" guardados exitosamente!`);
+    return newPet;
+  };
+
   // Rescates (Perros y gatos sin nombre con descripción física)
   const addRescue = (newRescue) => {
     const created = {
@@ -216,6 +272,7 @@ export function AppProvider({ children }) {
         deleteAppointment,
         addClient,
         addPet,
+        registerPetDirect,
         addRescue,
         addRescueIntervention,
         updateRescueStatus,
