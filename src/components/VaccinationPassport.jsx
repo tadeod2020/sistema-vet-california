@@ -12,22 +12,39 @@ import {
   MapPin, 
   CheckCircle2, 
   AlertTriangle,
-  QrCode,
   Plane,
-  XCircle
+  XCircle,
+  Camera,
+  Layers,
+  BookOpen,
+  CheckSquare,
+  Square,
+  Sparkles
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
+
+const CLINIC_SERVICES = [
+  "Histopatológia", "Consultas",
+  "Salud Dental", "Vacunaciones",
+  "Medicina Preventiva", "Análisis Clínicos",
+  "Programas Antiparasitarios", "Cirugías",
+  "Estética Canina y Felina", "Radiológia",
+  "Reproducción Asistida", "Hospitalización",
+  "Ecografías"
+];
 
 export function VaccinationPassport() {
   const { pets, clients, vaccinations, addVaccination } = useApp();
 
   const [selectedPetId, setSelectedPetId] = useState(() => pets.length > 0 ? pets[0].id : null);
+  const [activeCarnetPage, setActiveCarnetPage] = useState('spread'); // 'spread' (interior completo) | 'cover' | 'vaccines'
   const [isVacModalOpen, setIsVacModalOpen] = useState(false);
+  const [petPhotoUrl, setPetPhotoUrl] = useState({});
 
-  // New Vaccine Form State
+  // Form State
   const [vacForm, setVacForm] = useState({
     vaccineName: 'Vacuna Antirrábica (Rabies)',
-    manufacturer: 'Nobivac Rabies (MSD)',
+    manufacturer: 'Nobivac Rabies',
     lotNumber: 'RAB-2026-TJ',
     appliedDate: new Date().toISOString().split('T')[0],
     dueDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
@@ -59,6 +76,19 @@ export function VaccinationPassport() {
     setIsVacModalOpen(false);
   };
 
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files[0];
+    if (file && selectedPet) {
+      const url = URL.createObjectURL(file);
+      setPetPhotoUrl(prev => ({ ...prev, [selectedPet.id]: url }));
+    }
+  };
+
+  // Determine species checkboxes
+  const isDog = selectedPet?.species?.toLowerCase().includes('canino') || selectedPet?.species?.toLowerCase().includes('perro');
+  const isCat = selectedPet?.species?.toLowerCase().includes('felino') || selectedPet?.species?.toLowerCase().includes('gato');
+  const isOther = !isDog && !isCat;
+
   return (
     <div className="space-y-6">
       {/* Top Banner (hidden in print) */}
@@ -69,13 +99,13 @@ export function VaccinationPassport() {
           </div>
           <div>
             <h2 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
-              Cartilla de Vacunación & Passport to Travel
+              Cartilla Oficial & Passport to Travel
               <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-300">
-                Certificado Oficial Bilingüe (Tijuana - California)
+                Formato Físico Bilingüe Oficial
               </span>
             </h2>
             <p className="text-xs text-slate-500">
-              Emisión de pasaportes de viaje y certificados con aval para cruce internacional (CBP / CDC).
+              Réplica digital exacta de las páginas interiores y portada física para cruce internacional (Tijuana - EE.UU.).
             </p>
           </div>
         </div>
@@ -86,7 +116,7 @@ export function VaccinationPassport() {
             className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95"
           >
             <Plus className="w-4 h-4 text-rose-900 stroke-[3]" />
-            Registrar Vacuna
+            Aplicar Vacuna a Cartilla
           </button>
 
           <button
@@ -94,15 +124,15 @@ export function VaccinationPassport() {
             className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-amber-300 font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95"
           >
             <Printer className="w-4 h-4 text-amber-400" />
-            Imprimir Carnet Físico
+            Imprimir Formato Completo
           </button>
         </div>
       </div>
 
-      {/* Pet Selector (hidden in print) */}
-      <div className="glass-card rounded-2xl p-3 flex items-center gap-3 no-print overflow-x-auto">
-        <span className="text-xs font-bold text-slate-500 shrink-0">Seleccionar Mascota:</span>
-        <div className="flex items-center gap-2">
+      {/* Pet Selector and Page Navigation (hidden in print) */}
+      <div className="glass-card rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 no-print">
+        <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
+          <span className="text-xs font-bold text-slate-500 shrink-0">Mascota:</span>
           {pets.map(p => {
             const isSelected = selectedPet?.id === p.id;
             return (
@@ -111,41 +141,413 @@ export function VaccinationPassport() {
                 onClick={() => setSelectedPetId(p.id)}
                 className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all shrink-0 ${
                   isSelected 
-                    ? 'bg-amber-400 text-amber-950 shadow-xs scale-105' 
+                    ? 'bg-amber-400 text-amber-950 shadow-xs scale-102' 
                     : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
                 }`}
               >
-                {p.name} ({p.species} - {p.breed})
+                {p.name} ({p.species})
               </button>
             );
           })}
         </div>
+
+        {/* Carnet Section Switcher */}
+        <div className="flex items-center gap-1 p-1 bg-slate-200/60 rounded-xl w-full sm:w-auto justify-center">
+          <button
+            onClick={() => setActiveCarnetPage('spread')}
+            className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+              activeCarnetPage === 'spread' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Interior 1 (Datos & Foto)
+          </button>
+          <button
+            onClick={() => setActiveCarnetPage('vaccines')}
+            className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+              activeCarnetPage === 'vaccines' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Interior 2 (Sellos de Vacunas)
+          </button>
+          <button
+            onClick={() => setActiveCarnetPage('cover')}
+            className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+              activeCarnetPage === 'cover' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Portada Amarilla
+          </button>
+        </div>
       </div>
 
-      {/* Official Yellow Passport View (Faithful reproduction of physical carnet) */}
+      {/* ========================================================================= */}
+      {/* OFFICIAL PHYSICAL BOOKLET REPRESENTATION (PRINTABLE) */}
+      {/* ========================================================================= */}
       {selectedPet ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Printable Yellow Physical Booklet Card */}
-          <div className="lg:col-span-8 space-y-4">
-            <div className="passport-print-page bg-gradient-to-b from-[#FFF066] via-[#FFDE33] to-[#FFD200] text-slate-900 rounded-3xl p-6 md:p-8 shadow-xl border-4 border-[#7A1416] relative overflow-hidden transition-all">
+        <div className="space-y-8">
+          
+          {/* ===================================================================== */}
+          {/* SPREAD 1: INTERIOR 1 (Exact copy of carnet_interior_1.jpeg) */}
+          {/* ===================================================================== */}
+          {(activeCarnetPage === 'spread' || typeof window !== 'undefined') && (
+            <div className={`passport-print-page bg-white rounded-3xl p-6 sm:p-10 shadow-xl border-2 border-slate-300 max-w-4xl mx-auto ${activeCarnetPage !== 'spread' ? 'hidden print:block' : 'block'}`}>
               
-              {/* Header Title */}
-              <div className="text-center border-b-2 border-[#7A1416]/30 pb-4 mb-4">
-                <h1 className="text-xl md:text-2xl font-black text-[#7A1416] tracking-tight uppercase">
-                  CERTIFICADO VETERINARIO DE VACUNACIÓN
-                </h1>
-                <div className="text-xs md:text-sm font-black text-slate-900 uppercase tracking-widest mt-0.5">
-                  VETERINARY, CERTIFICATE OF VACCINATION
-                </div>
-                <div className="inline-block mt-2 px-4 py-1 rounded-full bg-[#7A1416] text-amber-300 font-extrabold text-xs md:text-sm tracking-widest uppercase shadow-xs">
-                  PASSPORT TO TRAVEL
+              {/* TOP HALF: SERVICES WITH PAW PRINTS */}
+              <div className="text-center border-b-2 border-slate-200 pb-8 mb-8">
+                <h2 className="text-base sm:text-lg font-black text-slate-900 uppercase tracking-wide">
+                  SERVICIO VETERINARIO CALIFORNIA
+                </h2>
+                <h3 className="text-xs sm:text-sm font-extrabold text-slate-700 uppercase tracking-widest mt-1">
+                  CUENTA CON LOS SIGUIENTES SERVICIOS:
+                </h3>
+
+                <div className="grid grid-cols-2 gap-x-8 gap-y-2 mt-6 max-w-2xl mx-auto text-left text-xs sm:text-sm font-semibold text-slate-800">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">🐾</span> Histopatológia
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">🐾</span> Salud Dental
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">🐾</span> Medicina Preventiva
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">🐾</span> Programas Antiparasitarios
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">🐾</span> Estética Canina y Felina
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">🐾</span> Reproducción Asistida
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">🐾</span> Consultas
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">🐾</span> Vacunaciones
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">🐾</span> Análisis Clínicos
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">🐾</span> Cirugías
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">🐾</span> Radiológia
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">🐾</span> Hospitalización
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">🐾</span> Ecografías
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Center Emblem */}
+              {/* BOTTOM HALF: 2 BOXES (PET DATA + OWNER ON LEFT, PHOTO ON RIGHT) */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
+                
+                {/* LEFT BOX: DATOS DE LA MASCOTA & PROPIETARIO */}
+                <div className="md:col-span-7 rounded-2xl border-2 border-slate-900 p-4 sm:p-5 flex flex-col justify-between space-y-4 text-xs">
+                  
+                  {/* SUBSECTION 1: DATOS DE LA MASCOTA - PET DATA */}
+                  <div className="space-y-2.5 border-b-2 border-slate-900 pb-4">
+                    <div className="font-black text-xs uppercase tracking-wider text-slate-900">
+                      DATOS DE LA MASCOTA - PET DATA
+                    </div>
+
+                    {/* Nombre */}
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-bold text-[11px] text-slate-600 leading-tight">Nombre:<br /><span className="text-[9px] text-slate-400">Name</span></span>
+                      <span className="flex-1 font-extrabold text-sm text-slate-900 border-b border-slate-400 pb-0.5 px-1 font-mono">
+                        {selectedPet.name}
+                      </span>
+                    </div>
+
+                    {/* Species Checkboxes: Perro [ ]  Gato [ ]  Otro [ ] */}
+                    <div className="flex items-center gap-6 pt-1 text-xs font-bold text-slate-800">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <span className={`w-4 h-4 rounded border-2 border-slate-900 flex items-center justify-center ${isDog ? 'bg-amber-400 text-slate-900' : 'bg-white'}`}>
+                          {isDog && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        </span>
+                        <span>Perro</span>
+                      </label>
+
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <span className={`w-4 h-4 rounded border-2 border-slate-900 flex items-center justify-center ${isCat ? 'bg-amber-400 text-slate-900' : 'bg-white'}`}>
+                          {isCat && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        </span>
+                        <span>Gato</span>
+                      </label>
+
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <span className={`w-4 h-4 rounded border-2 border-slate-900 flex items-center justify-center ${isOther ? 'bg-amber-400 text-slate-900' : 'bg-white'}`}>
+                          {isOther && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        </span>
+                        <span>Otro</span>
+                      </label>
+                    </div>
+
+                    {/* Raza and Color */}
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="font-bold text-[11px] text-slate-600">Raza:<br /><span className="text-[9px] text-slate-400">Breed</span></span>
+                        <span className="flex-1 font-semibold text-xs border-b border-slate-400 pb-0.5 px-1 truncate">
+                          {selectedPet.breed}
+                        </span>
+                      </div>
+
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="font-bold text-[11px] text-slate-600">Color:<br /><span className="text-[9px] text-slate-400">Color</span></span>
+                        <span className="flex-1 font-semibold text-xs border-b border-slate-400 pb-0.5 px-1 truncate">
+                          {selectedPet.color || 'No especificado'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Fecha de Nacimiento and Sexo */}
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="font-bold text-[11px] text-slate-600">Fecha Nac.:<br /><span className="text-[9px] text-slate-400">Birthday</span></span>
+                        <span className="flex-1 font-semibold text-xs border-b border-slate-400 pb-0.5 px-1 font-mono">
+                          {selectedPet.ageYears ? `${selectedPet.ageYears} años` : '-'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="font-bold text-[11px] text-slate-600">Sexo:<br /><span className="text-[9px] text-slate-400">Sex</span></span>
+                        <span className="flex-1 font-semibold text-xs border-b border-slate-400 pb-0.5 px-1 truncate">
+                          {selectedPet.sex}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Micro Chip */}
+                    <div className="flex items-baseline gap-2 pt-1">
+                      <span className="font-bold text-[11px] text-slate-600">Micro Chip:</span>
+                      <span className="flex-1 font-mono font-bold text-xs border-b border-slate-400 pb-0.5 px-1 text-rose-950">
+                        {selectedPet.microchip || 'Pendiente / No registrado'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* SUBSECTION 2: PROPIETARIO - OWNER */}
+                  <div className="space-y-2.5">
+                    <div className="font-black text-xs uppercase tracking-wider text-slate-900">
+                      PROPIETARIO - OWNER
+                    </div>
+
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-bold text-[11px] text-slate-600">Nombre:<br /><span className="text-[9px] text-slate-400">Name</span></span>
+                      <span className="flex-1 font-bold text-xs border-b border-slate-400 pb-0.5 px-1">
+                        {petOwner ? petOwner.name : 'Cliente General'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-bold text-[11px] text-slate-600">Dirección:<br /><span className="text-[9px] text-slate-400">Address</span></span>
+                      <span className="flex-1 font-medium text-xs border-b border-slate-400 pb-0.5 px-1 truncate">
+                        {petOwner?.address || 'Tijuana, B.C.'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-bold text-[11px] text-slate-600">Teléfono:<br /><span className="text-[9px] text-slate-400">Telephone</span></span>
+                      <span className="flex-1 font-mono font-bold text-xs border-b border-slate-400 pb-0.5 px-1">
+                        {petOwner ? petOwner.phone : '-'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-bold text-[11px] text-slate-600">Correo Electrónico:<br /><span className="text-[9px] text-slate-400">E-mail</span></span>
+                      <span className="flex-1 font-medium text-xs border-b border-slate-400 pb-0.5 px-1 truncate">
+                        {petOwner?.email || '-'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* RIGHT BOX: BIG ROUNDED RECTANGLE FOR PET PHOTO */}
+                <div className="md:col-span-5 rounded-2xl border-2 border-slate-900 p-4 flex flex-col items-center justify-center min-h-[300px] relative bg-slate-50/50 group">
+                  {petPhotoUrl[selectedPet.id] ? (
+                    <div className="w-full h-full rounded-xl overflow-hidden flex flex-col items-center justify-center">
+                      <img 
+                        src={petPhotoUrl[selectedPet.id]} 
+                        alt={selectedPet.name} 
+                        className="w-full h-64 object-cover rounded-xl shadow-xs"
+                      />
+                      <label className="mt-2 text-[10px] font-bold text-slate-500 hover:text-slate-800 cursor-pointer no-print flex items-center gap-1">
+                        <Camera className="w-3 h-3" /> Cambiar Fotografía
+                        <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="text-center p-6 space-y-3">
+                      <div className="w-20 h-20 rounded-full bg-slate-200/80 mx-auto flex items-center justify-center text-slate-400">
+                        <Camera className="w-8 h-8 text-slate-500" />
+                      </div>
+                      <div className="font-bold text-xs text-slate-700 uppercase tracking-wider">
+                        FOTOGRAFÍA DE LA MASCOTA
+                        <span className="block text-[10px] text-slate-400 font-normal">PET PHOTO</span>
+                      </div>
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xs rounded-xl shadow-xs cursor-pointer transition-all no-print">
+                        <Camera className="w-3.5 h-3.5" />
+                        Subir Foto
+                        <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ===================================================================== */}
+          {/* SPREAD 2: INTERIOR 2 (Exact copy of carnet_interior_2.jpeg) */}
+          {/* PROGRAMA DE VACUNACIÓN - VACCINATION (4 STICKER BOXES) */}
+          {/* ===================================================================== */}
+          {(activeCarnetPage === 'vaccines' || typeof window !== 'undefined') && (
+            <div className={`passport-print-page bg-white rounded-3xl p-6 sm:p-10 shadow-xl border-2 border-slate-300 max-w-4xl mx-auto space-y-6 ${activeCarnetPage !== 'vaccines' ? 'hidden print:block' : 'block'}`}>
+              
+              <div className="text-center border-b-2 border-slate-200 pb-3">
+                <span className="inline-block px-5 py-1 rounded-full bg-slate-900 text-amber-400 font-black text-xs uppercase tracking-widest">
+                  PROGRAMA DE VACUNACIÓN - VACCINATION
+                </span>
+                <p className="text-[11px] text-slate-500 mt-1 font-medium">
+                  Registro oficial con sellos de frasco, lote y firma del médico veterinario
+                </p>
+              </div>
+
+              {/* 2x2 Grid of Vaccine Cards (Replicating exact format of carnet_interior_2.jpeg) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {[0, 1, 2, 3].map((slotIdx) => {
+                  const vaccine = petVaccines[slotIdx] || null;
+
+                  return (
+                    <div 
+                      key={slotIdx}
+                      className="rounded-2xl border-2 border-slate-800 p-4 space-y-3 flex flex-col justify-between bg-slate-50/20"
+                    >
+                      {/* Top: Vacuna Aplicada (Vaccine) */}
+                      <div>
+                        <div className="flex items-baseline gap-2 border-b border-slate-300 pb-1">
+                          <span className="text-[11px] font-black text-slate-800 leading-tight">
+                            Vacuna Aplicada <span className="font-normal text-[9px] text-slate-500">(Vaccine)</span>:
+                          </span>
+                          <span className="font-black text-xs text-rose-950 flex-1 truncate font-mono">
+                            {vaccine ? vaccine.vaccineName : '______________________'}
+                          </span>
+                        </div>
+
+                        {/* Middle: 2 Vertical Sticker Boxes on Left + Dates on Right */}
+                        <div className="grid grid-cols-12 gap-3 mt-3 items-stretch">
+                          {/* 2 Vertical Sticker Boxes */}
+                          <div className="col-span-6 grid grid-cols-2 gap-1.5">
+                            <div className="rounded-xl border-2 border-slate-400 bg-white min-h-[90px] p-1 flex flex-col items-center justify-center text-center">
+                              {vaccine ? (
+                                <div className="text-[9px] leading-tight text-slate-700 font-mono">
+                                  <div className="font-bold text-amber-800">{vaccine.manufacturer.split(' ')[0]}</div>
+                                  <div className="text-[8px] text-slate-400">LOT: {vaccine.lotNumber}</div>
+                                  <div className="text-[7px] text-emerald-700 font-black mt-1">✓ VIRUS ACTIVO</div>
+                                </div>
+                              ) : (
+                                <span className="text-[8px] text-slate-300 font-mono">Etiqueta Frasco</span>
+                              )}
+                            </div>
+
+                            <div className="rounded-xl border-2 border-slate-400 bg-white min-h-[90px] p-1 flex flex-col items-center justify-center text-center">
+                              {vaccine ? (
+                                <div className="text-[9px] leading-tight text-slate-700 font-mono">
+                                  <div className="font-bold text-slate-900">1.0 mL</div>
+                                  <div className="text-[8px] text-slate-500">Subcutánea</div>
+                                  <div className="text-[7px] text-blue-700 font-bold mt-1">CBP VÁLIDO</div>
+                                </div>
+                              ) : (
+                                <span className="text-[8px] text-slate-300 font-mono">Etiqueta Diluyente</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Dates on Right */}
+                          <div className="col-span-6 flex flex-col justify-between py-1 border-l-2 border-slate-200 pl-3 space-y-2">
+                            <div>
+                              <span className="text-[10px] font-bold text-slate-700 block leading-tight">
+                                Fecha de Vacunación <br />
+                                <span className="text-[8px] text-slate-400 font-normal">(Vaccination Date)</span>
+                              </span>
+                              <span className="font-mono font-bold text-xs text-slate-900 block mt-0.5 border-b border-slate-300 pb-0.5">
+                                {vaccine ? vaccine.appliedDate : '______________'}
+                              </span>
+                            </div>
+
+                            <div>
+                              <span className="text-[10px] font-bold text-slate-700 block leading-tight">
+                                Próxima Aplicación <br />
+                                <span className="text-[8px] text-slate-400 font-normal">(Date of the Next Application)</span>
+                              </span>
+                              <span className="font-mono font-black text-xs text-rose-900 block mt-0.5 border-b border-slate-300 pb-0.5">
+                                {vaccine ? vaccine.dueDate : '______________'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bottom: Signature line */}
+                      <div className="pt-2 border-t border-slate-200 flex flex-col items-center">
+                        <div className="font-serif italic text-xs text-[#7A1416] tracking-wide mb-0.5">
+                          {vaccine ? vaccine.vetName : 'Dr. Mario Estrada'}
+                        </div>
+                        <div className="w-full border-t border-slate-800"></div>
+                        <span className="text-[9px] font-bold text-slate-600 uppercase mt-0.5">
+                          Firma del Veterinario
+                        </span>
+                        {vaccine && (
+                          <span className="text-[8px] font-mono text-slate-400">
+                            {vaccine.licenseNumber}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Action to add more vaccines */}
+              <div className="pt-2 flex justify-center no-print">
+                <button
+                  onClick={() => setIsVacModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 font-black text-xs rounded-xl shadow-xs transition-all active:scale-95"
+                >
+                  <Plus className="w-4 h-4 text-rose-900 stroke-[3]" />
+                  Agregar Vacuna / Sello a la Cartilla
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ===================================================================== */}
+          {/* SPREAD 3: COVER & BACKCOVER (Exact copy of carnet_portada & contraportada) */}
+          {/* ===================================================================== */}
+          {(activeCarnetPage === 'cover' || typeof window !== 'undefined') && (
+            <div className={`passport-print-page bg-gradient-to-b from-[#FFF066] via-[#FFDE33] to-[#FFD200] rounded-3xl p-8 sm:p-12 shadow-2xl border-4 border-[#7A1416] max-w-lg mx-auto text-center space-y-6 ${activeCarnetPage !== 'cover' ? 'hidden print:block' : 'block'}`}>
+              
+              {/* Header Title */}
+              <div className="border-b-2 border-[#7A1416]/40 pb-4">
+                <h1 className="text-xl sm:text-2xl font-black text-[#7A1416] tracking-tight uppercase leading-tight">
+                  CERTIFICADO VETERINARIO DE VACUNACIÓN
+                </h1>
+              </div>
+
+              {/* Paw Logo */}
               <div className="flex flex-col items-center justify-center my-4">
-                <div className="w-24 h-24 rounded-full bg-[#FFF8CC] border-4 border-[#7A1416] p-1.5 shadow-md flex items-center justify-center">
-                  <svg viewBox="0 0 100 100" className="w-full h-full" fill="none">
+                <div className="w-28 h-28 rounded-full bg-[#FFF8CC] border-4 border-[#7A1416] p-2 shadow-lg flex items-center justify-center">
+                  <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-xs" fill="none">
                     <path 
                       d="M50 78C38 78 31 66 35 56C38 48 46 51 50 48C54 51 62 48 65 56C69 66 62 78 50 78Z" 
                       fill="#7A1416" 
@@ -156,195 +558,46 @@ export function VaccinationPassport() {
                     <ellipse cx="67" cy="40" rx="7" ry="11" transform="rotate(18 67 40)" fill="#7A1416" />
                   </svg>
                 </div>
-                <span className="text-xs font-black tracking-widest uppercase text-[#7A1416] mt-1.5">
+                <span className="text-sm font-black tracking-widest uppercase text-[#7A1416] mt-2">
                   SERVICIO VETERINARIO CALIFORNIA
                 </span>
-                <span className="text-[10px] font-bold text-slate-700 italic">
-                  Todo para su mascota
-                </span>
               </div>
 
-              {/* Patient and Owner Credentials Box */}
-              <div className="bg-white/95 rounded-2xl p-4 shadow-sm border border-[#7A1416]/20 my-4 text-xs space-y-2.5">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Mascota / Pet Name</span>
-                    <span className="font-extrabold text-sm text-[#7A1416]">{selectedPet.name}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Especie & Raza / Breed</span>
-                    <span className="font-bold text-slate-800">{selectedPet.species} &bull; {selectedPet.breed}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Sexo & Edad / Age</span>
-                    <span className="font-bold text-slate-800">{selectedPet.sex} &bull; {selectedPet.ageYears} años</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Peso / Weight</span>
-                    <span className="font-bold text-slate-800">{selectedPet.weightKg} kg</span>
-                  </div>
-                </div>
+              {/* White Name Box (As seen in the physical carnet) */}
+              <div className="bg-white rounded-xl py-3 px-6 shadow-inner border border-amber-300 font-extrabold text-lg text-slate-900 tracking-wider">
+                {selectedPet.name} &bull; {selectedPet.species}
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Propietario / Owner</span>
-                    <span className="font-bold text-slate-900">{petOwner ? petOwner.name : 'No registrado'}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Teléfono / Phone</span>
-                    <span className="font-bold text-slate-900">{petOwner ? petOwner.phone : '-'}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Microchip ID (CBP)</span>
-                    <span className="font-mono font-bold text-rose-950">
-                      {selectedPet.microchip || 'Pendiente de implantar'}
-                    </span>
-                  </div>
+              {/* Address and Contact info */}
+              <div className="text-xs font-bold text-slate-900 space-y-1 pt-2">
+                <div>Felipe Carrillo Puerto No. 7184, Local 1</div>
+                <div>Calle Tercera</div>
+                <div className="font-extrabold text-sm text-[#7A1416]">Zona Centro, Tijuana, B.C.</div>
+                <div className="pt-1">Tel. (664) 685-8512</div>
+                <div className="font-extrabold flex items-center justify-center gap-1 text-slate-900">
+                  <span>WhatsApp: (664) 394-9984</span>
                 </div>
               </div>
 
-              {/* Official Vaccination Records Table */}
-              <div className="bg-white/95 rounded-2xl p-4 shadow-sm border border-[#7A1416]/20 my-4 overflow-x-auto">
-                <div className="text-xs font-black text-[#7A1416] uppercase tracking-wider mb-2 flex items-center justify-between">
-                  <span>Registro de Inmunización / Immunization Log</span>
-                  <span className="text-[10px] font-bold text-slate-500">Validez Sanitaria Bilingüe</span>
+              {/* Bottom Official Passport Stamp */}
+              <div className="pt-4 border-t-2 border-[#7A1416]/40 space-y-1">
+                <div className="text-xs font-black text-slate-900 tracking-widest uppercase">
+                  VETERINARY, CERTIFICATE OF VACCINATION
                 </div>
-
-                {petVaccines.length === 0 ? (
-                  <div className="text-center py-6 text-xs text-slate-400 italic">
-                    Sin vacunas registradas aún en esta cartilla.
-                  </div>
-                ) : (
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b-2 border-amber-300 text-[10px] font-extrabold uppercase text-slate-600">
-                        <th className="py-1.5 px-2">Biológico / Vaccine</th>
-                        <th className="py-1.5 px-2">Laboratorio & Lote</th>
-                        <th className="py-1.5 px-2">Aplicación</th>
-                        <th className="py-1.5 px-2">Próxima / Due</th>
-                        <th className="py-1.5 px-2 text-right">Médico Veterinario</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {petVaccines.map((vac) => (
-                        <tr key={vac.id} className="hover:bg-amber-50/40">
-                          <td className="py-2 px-2 font-bold text-slate-900">
-                            {vac.vaccineName}
-                            {vac.isTravelValid && (
-                              <span className="ml-1 text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-mono font-bold">
-                                Travel OK
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2 px-2 text-slate-600 font-mono text-[11px]">
-                            {vac.manufacturer} <br />
-                            <span className="text-slate-400 text-[10px]">Lote: {vac.lotNumber}</span>
-                          </td>
-                          <td className="py-2 px-2 font-bold text-slate-800">{vac.appliedDate}</td>
-                          <td className="py-2 px-2 font-black text-rose-900">{vac.dueDate}</td>
-                          <td className="py-2 px-2 text-right">
-                            <span className="font-bold text-slate-900 block">{vac.vetName}</span>
-                            <span className="text-[10px] text-slate-500 font-mono">{vac.licenseNumber}</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              {/* Official Seal and Signature Block */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 pt-4 border-t-2 border-[#7A1416]/20 text-xs">
-                <div className="space-y-1 text-[11px] leading-tight text-slate-900">
-                  <div className="font-extrabold text-[#7A1416]">SERVICIO VETERINARIO CALIFORNIA</div>
-                  <div>Felipe Carrillo Puerto No. 7184, Local 1 (Calle Tercera)</div>
-                  <div>Zona Centro, Tijuana, B.C. &bull; Tel. (664) 685-8512</div>
-                  <div className="font-bold text-slate-900">WhatsApp: (664) 394-9984</div>
+                <div className="inline-block px-4 py-1.5 rounded-full bg-[#7A1416] text-amber-300 font-black text-sm tracking-widest uppercase shadow-md">
+                  PASSPORT TO TRAVEL
                 </div>
-
-                <div className="flex flex-col items-center justify-end text-center">
-                  <div className="w-48 border-b-2 border-slate-900 pb-1 mb-1 font-serif italic text-sm text-[#7A1416]">
-                    Dr. Mario Estrada
-                  </div>
-                  <span className="text-[10px] font-bold uppercase text-slate-800">
-                    Firma & Sello del Médico Veterinario
-                  </span>
-                  <span className="text-[9px] font-mono text-slate-500">
-                    CÉDULA PROFESIONAL: 8492019-BC
-                  </span>
-                </div>
-              </div>
-
-              {/* Backside Branches Footer */}
-              <div className="mt-6 pt-3 border-t border-[#7A1416]/20 flex flex-wrap items-center justify-around text-[10px] text-slate-800 font-semibold">
-                <span><strong>Granero California:</strong> Calle 3ra No. 7160 Local 3 &bull; Tel. (664) 688-2875</span>
-                <span>&bull;</span>
-                <span><strong>Acua-Vet GDL:</strong> Av. Mutualismo 887 (2da y 3ra) &bull; Tel. (664) 685-9961</span>
               </div>
             </div>
-          </div>
-
-          {/* Right Column: Travel Checklist & Verification (hidden in print) */}
-          <div className="lg:col-span-4 space-y-4 no-print">
-            <div className="glass-card rounded-3xl p-5 border border-slate-200/90 shadow-xs space-y-4">
-              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                <h3 className="font-extrabold text-sm text-slate-900">
-                  Requisitos de Cruce (Tijuana &rarr; EE.UU.)
-                </h3>
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-slate-900 block">Vacuna Antirrábica Vigente</strong>
-                    <span className="text-slate-500 text-[11px]">
-                      Debe tener al menos 28 días de aplicada si es primera vez.
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-slate-900 block">Certificado de Salud Bilingüe</strong>
-                    <span className="text-slate-500 text-[11px]">
-                      Emitido dentro de los 10 días previos al cruce por Garita San Ysidro / Otay.
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-slate-900 block">Microchip ISO 11784/11785</strong>
-                    <span className="text-slate-500 text-[11px]">
-                      Compatible con lectores universales estadounidenses.
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-slate-100">
-                <button
-                  onClick={handlePrint}
-                  className="w-full py-2.5 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95 flex items-center justify-center gap-2"
-                >
-                  <Printer className="w-4 h-4 text-rose-900" />
-                  Imprimir Certificado Bilingüe
-                </button>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       ) : (
         <div className="text-center py-12 text-slate-400 glass-card rounded-3xl">
-          Selecciona una mascota para ver o emitir su cartilla.
+          Selecciona una mascota para visualizar y emitir su cartilla física.
         </div>
       )}
 
-      {/* Modal: Registrar Nueva Vacuna */}
+      {/* MODAL: REGISTRAR NUEVA VACUNA */}
       {isVacModalOpen && selectedPet && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-slideUp">
@@ -355,9 +608,9 @@ export function VaccinationPassport() {
                 </div>
                 <div>
                   <h3 className="font-extrabold text-base text-slate-900">
-                    Registrar Vacuna para {selectedPet.name}
+                    Asentar Vacuna para {selectedPet.name}
                   </h3>
-                  <p className="text-xs text-slate-500">Cartilla oficial de Servicio Veterinario California</p>
+                  <p className="text-xs text-slate-500">Genera el sello oficial para el Programa de Vacunación</p>
                 </div>
               </div>
               <button 
@@ -382,7 +635,7 @@ export function VaccinationPassport() {
                   <option value="Puppy DP (Parvovirus y Distemper)">Puppy DP (Parvovirus y Distemper)</option>
                   <option value="Triple Felina (FVRCP)">Triple Felina (FVRCP)</option>
                   <option value="Desparasitación Interna (Endovet)">Desparasitación Interna (Endovet)</option>
-                  <option value="Desparasitación Externa (Pipeta / Bravecto)">Desparasitación Externa (Pipeta / Bravecto)</option>
+                  <option value="Desparasitación Externa (Bravecto / Pipeta)">Desparasitación Externa (Bravecto / Pipeta)</option>
                 </select>
               </div>
 
@@ -418,7 +671,7 @@ export function VaccinationPassport() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Próximo Refuerzo (Vigencia)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Próxima Aplicación (Vigencia)</label>
                   <input
                     type="date"
                     value={vacForm.dueDate}
