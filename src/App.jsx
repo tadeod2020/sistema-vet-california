@@ -7,6 +7,7 @@ import { Rescues } from './components/Rescues';
 import { Surgeries } from './components/Surgeries';
 import { VaccinationPassport } from './components/VaccinationPassport';
 import { Cages } from './components/Cages';
+import { Login } from './components/Login';
 import { 
   CheckCircle2, 
   AlertCircle, 
@@ -71,7 +72,31 @@ class ErrorBoundary extends React.Component {
 }
 
 function MainContent() {
-  const { activeTab, notification } = useApp();
+  const { activeTab, notification, isAuthenticated } = useApp();
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-full flex flex-col bg-slate-50/50">
+        <Login />
+
+        {/* Floating Apple-like Toast Notification */}
+        {notification && (
+          <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-slate-900/95 text-white p-4 rounded-2xl shadow-2xl backdrop-blur-md border border-slate-800 flex items-center gap-3 animate-slideUp">
+            {notification.type === 'error' ? (
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+            ) : notification.type === 'info' ? (
+              <Info className="w-5 h-5 text-blue-400 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-5 h-5 text-amber-400 shrink-0" />
+            )}
+            <div className="text-xs font-semibold leading-tight flex-1">
+              {notification.message}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full flex flex-col bg-slate-50/50">

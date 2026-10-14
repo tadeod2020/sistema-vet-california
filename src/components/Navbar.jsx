@@ -11,11 +11,23 @@ import {
   Download, 
   RotateCcw,
   MessageCircle,
-  Phone
+  Phone,
+  LogOut,
+  UserCheck
 } from 'lucide-react';
 
 export function Navbar() {
-  const { activeTab, setActiveTab, exportBackup, resetToDefaults, appointments, rescues, cages = [] } = useApp();
+  const { 
+    activeTab, 
+    setActiveTab, 
+    exportBackup, 
+    resetToDefaults, 
+    appointments, 
+    rescues, 
+    cages = [],
+    currentUser,
+    logout
+  } = useApp();
 
   const todayStr = new Date().toISOString().split('T')[0];
   const todayAptsCount = appointments.filter(a => a.date === todayStr && a.status !== 'Cancelada').length;
@@ -66,24 +78,45 @@ export function Navbar() {
             <BrandLogo showText={true} />
           </div>
 
-          {/* Quick Data Actions */}
+          {/* Quick Data Actions & User Session */}
           <div className="flex items-center gap-2">
             <button
               onClick={exportBackup}
               title="Descargar respaldo JSON de la base de datos"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-xs transition-all hover:border-slate-300 active:scale-95"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-xs transition-all hover:border-slate-300 active:scale-95"
             >
               <Download className="w-3.5 h-3.5 text-slate-500" />
-              <span className="hidden sm:inline">Respaldar BD</span>
+              <span>Respaldar BD</span>
             </button>
 
             <button
               onClick={resetToDefaults}
               title="Reiniciar datos de demostración"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
+              className="inline-flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
+
+            {/* User Session Badge & Logout */}
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
+              <div className="hidden lg:flex flex-col text-right">
+                <span className="text-xs font-black text-slate-900 leading-tight">
+                  {currentUser?.name || 'Dr. Mario Estrada'}
+                </span>
+                <span className="text-[10px] font-bold text-[#7A1416]">
+                  {currentUser?.role || 'Médico Veterinario'}
+                </span>
+              </div>
+
+              <button
+                onClick={logout}
+                title="Cerrar sesión"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5 text-rose-700" />
+                <span className="hidden sm:inline">Cerrar Sesión</span>
+              </button>
+            </div>
           </div>
         </div>
 
