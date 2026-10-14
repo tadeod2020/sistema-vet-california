@@ -18,11 +18,36 @@ import {
   ChevronUp,
   Check,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  Camera,
+  FolderOpen,
+  Activity,
+  Heart,
+  Stethoscope,
+  Scissors,
+  Building,
+  CheckCircle2,
+  ExternalLink,
+  ChevronRight,
+  Clock,
+  Trash2
 } from 'lucide-react';
 
 export function PatientsAndClients() {
-  const { clients, pets, addClient, registerPetDirect, setActiveTab } = useApp();
+  const { 
+    clients, 
+    pets, 
+    addClient, 
+    registerPetDirect, 
+    setActiveTab,
+    updatePet,
+    addClinicalNote,
+    openPetPassport,
+    vaccinations = [],
+    surgeries = [],
+    cages = [],
+    appointments = []
+  } = useApp();
 
   const [activeView, setActiveView] = useState('pets'); // 'pets' | 'clients'
   const [searchQuery, setSearchQuery] = useState('');
@@ -33,11 +58,27 @@ export function PatientsAndClients() {
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [showOptionalFields, setShowOptionalFields] = useState(false);
 
-  // Quick Pet Form (Only 3 required fields: ownerPhone, ownerName, petName)
+  // Expediente Clínico Modal State
+  const [selectedPetForDossier, setSelectedPetForDossier] = useState(null);
+  const [activeDossierTab, setActiveDossierTab] = useState('consultations'); // 'consultations' | 'vaccines' | 'surgeries' | 'hospital'
+  const [isAddingNote, setIsAddingNote] = useState(false);
+  const [noteForm, setNoteForm] = useState({
+    reason: '',
+    diagnosis: '',
+    treatment: '',
+    temperature: '',
+    weight: '',
+    heartRate: '',
+    nextCheckup: '',
+    vet: 'Médico Veterinario de Guardia'
+  });
+
+  // Quick Pet Form (Only 3 required fields: ownerPhone, ownerName, petName + optional photoUrl)
   const [quickPetForm, setQuickPetForm] = useState({
     ownerPhone: '',
     ownerName: '',
     petName: '',
+    photoUrl: '',
     // Optional fields
     species: 'Canino',
     breed: '',
@@ -62,6 +103,30 @@ export function PatientsAndClients() {
     tag: 'Cliente Regular',
     notes: ''
   });
+
+  const handleQuickPetPhoto = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setQuickPetForm(prev => ({ ...prev, photoUrl: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleUpdateDossierPhoto = (petId, e) => {
+    const file = e.target.files[0];
+    if (file && petId) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result;
+        updatePet(petId, { photoUrl: base64 });
+        setSelectedPetForDossier(prev => (prev ? { ...prev, photoUrl: base64 } : prev));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Handle phone input in quick pet registration to auto-detect existing owner
   const handlePhoneChange = (val) => {
@@ -90,6 +155,7 @@ export function PatientsAndClients() {
       ownerPhone: quickPetForm.ownerPhone,
       ownerName: quickPetForm.ownerName,
       petName: quickPetForm.petName,
+      photoUrl: quickPetForm.photoUrl || '',
       species: quickPetForm.species || 'Canino',
       breed: quickPetForm.breed || 'Sin especificar',
       ageYears: quickPetForm.ageYears,
@@ -107,6 +173,7 @@ export function PatientsAndClients() {
       ownerPhone: '',
       ownerName: '',
       petName: '',
+      photoUrl: '',
       species: 'Canino',
       breed: '',
       ageYears: '',
@@ -119,6 +186,38 @@ export function PatientsAndClients() {
       ownerAddress: ''
     });
     setShowOptionalFields(false);
+  };
+
+  const handleAddNoteSubmit = (e) => {
+    e.preventDefault();
+    if (!selectedPetForDossier) return;
+
+    addClinicalNote(selectedPetForDossier.id, {
+      reason: noteForm.reason,
+      diagnosis: noteForm.diagnosis,
+      treatment: noteForm.treatment,
+      vet: noteForm.vet || 'Médico Veterinario de Guardia',
+      temperature: noteForm.temperature,
+      weight: noteForm.weight,
+      heartRate: noteForm.heartRate,
+      nextCheckup: noteForm.nextCheckup
+    });
+
+    if (noteForm.weight && updatePet) {
+      updatePet(selectedPetForDossier.id, { weightKg: Number(noteForm.weight) });
+    }
+
+    setIsAddingNote(false);
+    setNoteForm({
+      reason: '',
+      diagnosis: '',
+      treatment: '',
+      temperature: '',
+      weight: '',
+      heartRate: '',
+      nextCheckup: '',
+      vet: 'Médico Veterinario de Guardia'
+    });
   };
 
   const handleCreateClient = (e) => {
@@ -270,53 +369,66 @@ export function PatientsAndClients() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredPets.map((pet) => {
             const owner = clients.find(c => c.id === pet.clientId);
+            const notesCount = (pet.clinicalNotes || []).length;
+
             return (
               <div
                 key={pet.id}
-                className="glass-card rounded-2xl p-4.5 border border-slate-200/90 shadow-xs hover:border-amber-300 transition-all flex flex-col justify-between"
+                className="glass-card rounded-2xl p-4.5 border border-slate-200/90 shadow-xs hover:border-amber-300 transition-all flex flex-col justify-between group"
               >
                 <div>
-                  {/* Pet Name & Species Badge */}
-                  <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-base font-black text-slate-900">{pet.name}</span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-200">
+                  {/* Pet Header with Photo and Info */}
+                  <div className="flex items-center gap-3.5 border-b border-slate-100 pb-3">
+                    <div className="relative w-14 h-14 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 shadow-xs flex items-center justify-center">
+                      {pet.photoUrl ? (
+                        <img 
+                          src={pet.photoUrl} 
+                          alt={pet.name} 
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                        />
+                      ) : (
+                        <PawPrint className="w-7 h-7 text-amber-600/70" />
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-base font-black text-slate-900 truncate">{pet.name}</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-200 shrink-0">
                           {pet.species}
                         </span>
+                        {owner?.isFrequent && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-400 text-amber-950 flex items-center gap-0.5 shrink-0 shadow-xs">
+                            <Star className="w-2.5 h-2.5 fill-amber-950" />
+                          </span>
+                        )}
                       </div>
-                      <div className="text-xs text-slate-500 mt-0.5 font-medium">
+                      <div className="text-xs text-slate-500 mt-0.5 font-medium truncate">
                         {pet.breed} &bull; {pet.sex}
                       </div>
                     </div>
-
-                    {owner?.isFrequent && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 flex items-center gap-1 shadow-xs">
-                        <Star className="w-2.5 h-2.5 fill-amber-950" /> Frecuente
-                      </span>
-                    )}
                   </div>
 
                   {/* Owner Information (Essential contact) */}
                   <div className="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                        <Users className="w-3 h-3 text-slate-400" />
-                        {owner ? owner.name : 'Dueño sin registrar'}
+                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1 truncate">
+                        <Users className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span className="truncate">{owner ? owner.name : 'Dueño sin registrar'}</span>
                       </span>
                       {owner?.whatsapp && (
                         <a
                           href={`https://wa.me/${owner.whatsapp}?text=Hola%20${encodeURIComponent(owner.name)},%20te%20escribimos%20de%20Servicio%20Veterinario%20California%20sobre%20tu%20mascota%20${encodeURIComponent(pet.name)}...`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md hover:bg-emerald-200 transition-colors"
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md hover:bg-emerald-200 transition-colors shrink-0"
                         >
                           <MessageCircle className="w-3 h-3 text-emerald-600" /> WhatsApp
                         </a>
                       )}
                     </div>
                     <div className="text-[11px] text-slate-500 flex items-center gap-1">
-                      <Phone className="w-3 h-3 text-slate-400" />
+                      <Phone className="w-3 h-3 text-slate-400 shrink-0" />
                       {owner ? owner.phone : 'Sin teléfono'}
                     </div>
                   </div>
@@ -328,29 +440,45 @@ export function PatientsAndClients() {
                       <span className="font-semibold">{pet.ageYears} años &bull; {pet.weightKg} kg</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px]">Color:</span>
-                      <span className="font-semibold">{pet.color}</span>
+                      <span className="text-slate-400 block text-[10px]">Historial Clínico:</span>
+                      <span className="font-semibold text-rose-950 flex items-center gap-1">
+                        <FileText className="w-3 h-3 text-amber-600" />
+                        {notesCount > 0 ? `${notesCount} consulta(s)` : 'Al día'}
+                      </span>
                     </div>
                   </div>
 
                   {pet.allergies && pet.allergies !== 'Ninguna' && pet.allergies !== 'Ninguna conocida' && (
                     <div className="mt-2 text-[10px] text-rose-800 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 flex items-center gap-1">
-                      <AlertCircle className="w-2.5 h-2.5" /> Alergia: {pet.allergies}
+                      <AlertCircle className="w-2.5 h-2.5 shrink-0" /> Alergia: {pet.allergies}
                     </div>
                   )}
                 </div>
 
-                {/* Footer action */}
-                <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <span className="text-[10px] text-slate-400 font-mono">
+                {/* Footer action buttons */}
+                <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
+                  <span className="text-[10px] text-slate-400 font-mono truncate">
                     {pet.microchip ? `Chip: ${pet.microchip.slice(-6)}` : 'Sin chip'}
                   </span>
-                  <button
-                    onClick={() => setActiveTab('passport')}
-                    className="font-bold text-xs text-rose-900 hover:text-amber-600 transition-colors flex items-center gap-1"
-                  >
-                    Ver Cartilla &rarr;
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setSelectedPetForDossier(pet);
+                        setActiveDossierTab('consultations');
+                        setIsAddingNote(false);
+                      }}
+                      className="px-2.5 py-1 font-bold text-xs bg-amber-100 hover:bg-amber-200 text-amber-950 rounded-lg transition-colors flex items-center gap-1 shadow-2xs"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5 text-amber-800" />
+                      Expediente
+                    </button>
+                    <button
+                      onClick={() => openPetPassport ? openPetPassport(pet.id) : setActiveTab('passport')}
+                      className="px-2.5 py-1 font-bold text-xs bg-slate-900 hover:bg-slate-800 text-amber-400 rounded-lg transition-colors flex items-center gap-1 shadow-2xs"
+                    >
+                      Cartilla &rarr;
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -534,6 +662,46 @@ export function PatientsAndClients() {
 
                 {showOptionalFields && (
                   <div className="p-4 bg-white space-y-3 text-xs border-t border-slate-200">
+                    {/* Foto del Perro (Opcional) */}
+                    <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                      <div className="relative w-16 h-16 rounded-xl bg-white border border-slate-300 flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                        {quickPetForm.photoUrl ? (
+                          <img src={quickPetForm.photoUrl} alt="Foto mascota" className="w-full h-full object-cover" />
+                        ) : (
+                          <Camera className="w-6 h-6 text-slate-400" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Foto del Perro / Mascota (Opcional)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-amber-950 text-xs font-bold rounded-lg cursor-pointer shadow-xs transition-all">
+                            <Camera className="w-3.5 h-3.5" />
+                            {quickPetForm.photoUrl ? 'Cambiar Foto' : 'Subir Foto'}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleQuickPetPhoto}
+                              className="hidden"
+                            />
+                          </label>
+                          {quickPetForm.photoUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setQuickPetForm(prev => ({ ...prev, photoUrl: '' }))}
+                              className="text-[11px] font-semibold text-rose-700 hover:underline px-1 py-1"
+                            >
+                              Quitar
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          JPG o PNG. Se sincroniza con el carnet de vacunación y expediente.
+                        </p>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block font-semibold text-slate-600 mb-1">Especie</label>
@@ -763,6 +931,674 @@ export function PatientsAndClients() {
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: EXPEDIENTE CLÍNICO DIGITAL DE LA MASCOTA */}
+      {/* ========================================================================= */}
+      {selectedPetForDossier && (() => {
+        const dossierPet = pets.find(p => p.id === selectedPetForDossier.id) || selectedPetForDossier;
+        const dossierOwner = clients.find(c => c.id === dossierPet.clientId);
+        const dossierVaccines = vaccinations.filter(v => v.petId === dossierPet.id || v.petName?.toLowerCase() === dossierPet.name.toLowerCase());
+        const dossierSurgeries = surgeries.filter(s => s.petId === dossierPet.id || s.petName?.toLowerCase() === dossierPet.name.toLowerCase());
+        const dossierCage = cages.find(c => c.currentOccupant?.patientId === dossierPet.id || c.currentOccupant?.patientName?.toLowerCase() === dossierPet.name.toLowerCase());
+        const notes = dossierPet.clinicalNotes || [];
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-md animate-fadeIn">
+            <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[94vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-slideUp">
+              
+              {/* HEADER BANNER WITH PATIENT IDENTITY & OWNER */}
+              <div className="bg-gradient-to-r from-amber-50 via-white to-amber-50/40 p-4 sm:p-6 border-b border-slate-200">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    {/* Pet Photo with Quick Change Trigger */}
+                    <div className="relative group shrink-0">
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-slate-100 border-2 border-amber-400 shadow-md flex items-center justify-center">
+                        {dossierPet.photoUrl ? (
+                          <img 
+                            src={dossierPet.photoUrl} 
+                            alt={dossierPet.name} 
+                            className="w-full h-full object-cover" 
+                          />
+                        ) : (
+                          <PawPrint className="w-10 h-10 text-amber-600" />
+                        )}
+                      </div>
+                      <label 
+                        className="absolute bottom-0 right-0 p-1.5 bg-slate-900/80 hover:bg-slate-900 text-white rounded-xl shadow-md cursor-pointer transition-all"
+                        title="Cambiar fotografía"
+                      >
+                        <Camera className="w-3.5 h-3.5 text-amber-400" />
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={(e) => handleUpdateDossierPhoto(dossierPet.id, e)} 
+                          className="hidden" 
+                        />
+                      </label>
+                    </div>
+
+                    {/* Pet Details */}
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                          {dossierPet.name}
+                        </h2>
+                        <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-400 text-amber-950 shadow-2xs">
+                          {dossierPet.species}
+                        </span>
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
+                          {dossierPet.breed}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-slate-600">
+                        <span><strong>Edad:</strong> {dossierPet.ageYears} años</span>
+                        <span>&bull;</span>
+                        <span><strong>Sexo:</strong> {dossierPet.sex}</span>
+                        <span>&bull;</span>
+                        <span><strong>Peso:</strong> {dossierPet.weightKg} kg</span>
+                        {dossierPet.microchip && (
+                          <>
+                            <span>&bull;</span>
+                            <span className="font-mono text-slate-700"><strong>Chip:</strong> {dossierPet.microchip}</span>
+                          </>
+                        )}
+                      </div>
+
+                      {dossierPet.allergies && dossierPet.allergies !== 'Ninguna' && dossierPet.allergies !== 'Ninguna conocida' && (
+                        <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-rose-100 text-rose-900 border border-rose-300 text-xs font-bold">
+                          <AlertCircle className="w-3.5 h-3.5 text-rose-700" />
+                          Alergia / Condición: {dossierPet.allergies}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Owner Contact Card & Close Button */}
+                  <div className="flex items-center gap-3 self-stretch sm:self-auto justify-between sm:justify-end border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-200">
+                    <div className="p-2.5 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-1 text-xs">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        Propietario
+                      </div>
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-slate-400" />
+                        {dossierOwner ? dossierOwner.name : 'Dueño sin registrar'}
+                      </div>
+                      {dossierOwner && (
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <a
+                            href={`tel:${dossierOwner.phone}`}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900"
+                          >
+                            <Phone className="w-3 h-3 text-slate-400" />
+                            {dossierOwner.phone}
+                          </a>
+                          {dossierOwner.whatsapp && (
+                            <a
+                              href={`https://wa.me/${dossierOwner.whatsapp}?text=Hola%20${encodeURIComponent(dossierOwner.name)},%20te%20escribimos%20de%20Servicio%20Veterinario%20California%20sobre%20el%20expediente%20de%20${encodeURIComponent(dossierPet.name)}...`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md hover:bg-emerald-200 transition-colors"
+                            >
+                              <MessageCircle className="w-3 h-3 text-emerald-600" /> WhatsApp
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => setSelectedPetForDossier(null)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors self-start"
+                    >
+                      <XCircle className="w-6 h-6" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* DOSSIER SEGMENTED TABS */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pt-4 mt-2 border-t border-slate-200">
+                  <button
+                    onClick={() => { setActiveDossierTab('consultations'); setIsAddingNote(false); }}
+                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all whitespace-nowrap ${
+                      activeDossierTab === 'consultations'
+                        ? 'bg-amber-400 text-amber-950 shadow-xs'
+                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    <Stethoscope className="w-3.5 h-3.5 text-rose-900" />
+                    Consultas & Notas Médicas
+                    <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-black bg-black/10">
+                      {notes.length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveDossierTab('vaccines')}
+                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all whitespace-nowrap ${
+                      activeDossierTab === 'vaccines'
+                        ? 'bg-amber-400 text-amber-950 shadow-xs'
+                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5 text-amber-700" />
+                    Cartilla & Vacunas
+                    <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-black bg-black/10">
+                      {dossierVaccines.length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveDossierTab('surgeries')}
+                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all whitespace-nowrap ${
+                      activeDossierTab === 'surgeries'
+                        ? 'bg-amber-400 text-amber-950 shadow-xs'
+                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    <Scissors className="w-3.5 h-3.5 text-rose-800" />
+                    Cirugías
+                    <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-black bg-black/10">
+                      {dossierSurgeries.length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveDossierTab('hospital')}
+                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all whitespace-nowrap ${
+                      activeDossierTab === 'hospital'
+                        ? 'bg-amber-400 text-amber-950 shadow-xs'
+                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    <Building className="w-3.5 h-3.5 text-slate-700" />
+                    Hospitalización
+                    {dossierCage && (
+                      <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse">
+                        Activo ({dossierCage.code})
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* BODY: TABS CONTENT */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+                
+                {/* TAB 1: CONSULTAS Y NOTAS */}
+                {activeDossierTab === 'consultations' && (
+                  <div className="space-y-4">
+                    {/* Action Bar */}
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="font-extrabold text-sm text-slate-900">
+                          Historial de Consultas y Evaluaciones Clínicas
+                        </h4>
+                        <p className="text-xs text-slate-500">
+                          Registro cronológico de diagnósticos, constantes vitales y tratamientos
+                        </p>
+                      </div>
+
+                      {!isAddingNote && (
+                        <button
+                          onClick={() => setIsAddingNote(true)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95"
+                        >
+                          <Plus className="w-4 h-4 text-rose-900 stroke-[3]" />
+                          + Nueva Consulta
+                        </button>
+                      )}
+                    </div>
+
+                    {/* FORM: AGREGAR NUEVA CONSULTA */}
+                    {isAddingNote && (
+                      <form onSubmit={handleAddNoteSubmit} className="p-4 sm:p-5 rounded-2xl bg-amber-50/60 border-2 border-amber-300 space-y-4 shadow-sm animate-slideDown">
+                        <div className="flex items-center justify-between border-b border-amber-200 pb-2">
+                          <span className="font-black text-xs uppercase tracking-wider text-rose-950 flex items-center gap-1.5">
+                            <Stethoscope className="w-4 h-4 text-rose-900" />
+                            Nueva Consulta / Nota Médica
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsAddingNote(false)}
+                            className="text-xs text-slate-500 hover:text-slate-800"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <label className="block font-bold text-slate-800 mb-1">Motivo de Consulta *</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ej. Control preventivo, Vómitos, Claudicación..."
+                              value={noteForm.reason}
+                              onChange={(e) => setNoteForm(prev => ({ ...prev, reason: e.target.value }))}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none font-semibold text-slate-900"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block font-bold text-slate-800 mb-1">Médico Veterinario</label>
+                            <input
+                              type="text"
+                              value={noteForm.vet}
+                              onChange={(e) => setNoteForm(prev => ({ ...prev, vet: e.target.value }))}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none text-slate-900"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Vitals row */}
+                        <div className="grid grid-cols-3 gap-3 text-xs">
+                          <div>
+                            <label className="block font-bold text-slate-800 mb-1">Temperatura (°C)</label>
+                            <input
+                              type="text"
+                              placeholder="Ej. 38.5"
+                              value={noteForm.temperature}
+                              onChange={(e) => setNoteForm(prev => ({ ...prev, temperature: e.target.value }))}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-bold text-slate-800 mb-1">Peso Actual (kg)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              placeholder={`Actual: ${dossierPet.weightKg}`}
+                              value={noteForm.weight}
+                              onChange={(e) => setNoteForm(prev => ({ ...prev, weight: e.target.value }))}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-bold text-slate-800 mb-1">Frecuencia Cardíaca</label>
+                            <input
+                              type="text"
+                              placeholder="Ej. 110 lpm"
+                              value={noteForm.heartRate}
+                              onChange={(e) => setNoteForm(prev => ({ ...prev, heartRate: e.target.value }))}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Diagnosis & Treatment */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <label className="block font-bold text-slate-800 mb-1">Diagnóstico Clínico *</label>
+                            <textarea
+                              required
+                              rows={2}
+                              placeholder="Hallazgos en anamnesis y exploración física..."
+                              value={noteForm.diagnosis}
+                              onChange={(e) => setNoteForm(prev => ({ ...prev, diagnosis: e.target.value }))}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block font-bold text-slate-800 mb-1">Tratamiento / Receta Médica *</label>
+                            <textarea
+                              required
+                              rows={2}
+                              placeholder="Medicamentos, dosis, frecuencia y cuidados indicados..."
+                              value={noteForm.treatment}
+                              onChange={(e) => setNoteForm(prev => ({ ...prev, treatment: e.target.value }))}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+                          <div className="w-full sm:w-auto">
+                            <label className="block text-xs font-bold text-slate-800 mb-1">Próxima Cita / Seguimiento (Opcional)</label>
+                            <input
+                              type="date"
+                              value={noteForm.nextCheckup}
+                              onChange={(e) => setNoteForm(prev => ({ ...prev, nextCheckup: e.target.value }))}
+                              className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-2 self-end">
+                            <button
+                              type="button"
+                              onClick={() => setIsAddingNote(false)}
+                              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="submit"
+                              className="px-5 py-2 text-xs font-black text-amber-950 bg-amber-400 hover:bg-amber-500 rounded-xl shadow-xs transition-all active:scale-95"
+                            >
+                              Guardar Consulta en Expediente
+                            </button>
+                          </div>
+                        </div>
+                      </form>
+                    )}
+
+                    {/* Timeline of Notes */}
+                    {notes.length === 0 ? (
+                      <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
+                        <Stethoscope className="w-8 h-8 text-slate-400 mx-auto" />
+                        <div className="font-bold text-xs text-slate-700">No hay consultas registradas aún</div>
+                        <p className="text-[11px] text-slate-500">
+                          Haz clic en "+ Nueva Consulta" para registrar la primera visita médica del paciente.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {notes.map((note) => (
+                          <div 
+                            key={note.id}
+                            className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-amber-300 transition-all space-y-3"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="font-black text-xs text-rose-950">
+                                  {note.reason}
+                                </span>
+                                <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                                  {note.vet || 'Médico Veterinario'}
+                                </span>
+                              </div>
+                              <span className="text-[11px] font-mono font-bold text-slate-500 flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                {note.date}
+                              </span>
+                            </div>
+
+                            {/* Vitals Badges */}
+                            {note.vitals && (
+                              <div className="flex flex-wrap items-center gap-2 text-xs">
+                                {note.vitals.temp && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-50 text-orange-900 border border-orange-200 font-semibold text-[11px]">
+                                    🌡️ Temp: {note.vitals.temp}
+                                  </span>
+                                )}
+                                {note.vitals.weight && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 font-semibold text-[11px]">
+                                    ⚖️ Peso: {note.vitals.weight}
+                                  </span>
+                                )}
+                                {note.vitals.heartRate && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-900 border border-rose-200 font-semibold text-[11px]">
+                                    ❤️ F.C.: {note.vitals.heartRate}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Clinical diagnosis and treatment */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                                  Diagnóstico Clínico
+                                </div>
+                                <p className="text-slate-800 font-medium">
+                                  {note.diagnosis}
+                                </p>
+                              </div>
+
+                              <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200/80">
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-amber-900 mb-1">
+                                  Tratamiento & Receta Indicada
+                                </div>
+                                <p className="text-slate-900 font-semibold">
+                                  {note.treatment}
+                                </p>
+                              </div>
+                            </div>
+
+                            {note.nextCheckup && (
+                              <div className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200 inline-flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                                Próxima cita de revisión programada: {note.nextCheckup}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 2: VACUNAS & CARTILLA */}
+                {activeDossierTab === 'vaccines' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="font-extrabold text-sm text-slate-900">
+                          Esquema de Vacunación e Inmunizaciones
+                        </h4>
+                        <p className="text-xs text-slate-500">
+                          Dosis aplicadas registradas en la cartilla oficial y Cruce Fronterizo CBP
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setSelectedPetForDossier(null);
+                          if (openPetPassport) {
+                            openPetPassport(dossierPet.id);
+                          } else {
+                            setActiveTab('passport');
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs rounded-xl shadow-xs transition-all"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-amber-400" />
+                        Abrir Cartilla Oficial &rarr;
+                      </button>
+                    </div>
+
+                    {dossierVaccines.length === 0 ? (
+                      <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-3">
+                        <FileText className="w-8 h-8 text-slate-400 mx-auto" />
+                        <div className="font-bold text-xs text-slate-700">Sin vacunas registradas en el sistema</div>
+                        <p className="text-[11px] text-slate-500">
+                          Puedes registrar vacunas oficiales (Rabia, Séxtuple, Bordetella) desde la sección de Cartilla Oficial.
+                        </p>
+                        <button
+                          onClick={() => {
+                            setSelectedPetForDossier(null);
+                            if (openPetPassport) openPetPassport(dossierPet.id);
+                            else setActiveTab('passport');
+                          }}
+                          className="px-4 py-2 bg-amber-400 text-amber-950 font-bold text-xs rounded-xl shadow-xs"
+                        >
+                          Ir a Cartilla Oficial
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {dossierVaccines.map((vac) => (
+                          <div key={vac.id} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="font-extrabold text-xs text-slate-900">{vac.vaccineName}</span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                Vigente
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-600 space-y-1">
+                              <div><strong>Fabricante / Lote:</strong> {vac.manufacturer} &bull; {vac.lotNumber}</div>
+                              <div><strong>Aplicación:</strong> {vac.appliedDate}</div>
+                              <div><strong>Próximo refuerzo:</strong> {vac.dueDate}</div>
+                              <div><strong>Médico:</strong> {vac.vetName}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 3: CIRUGÍAS */}
+                {activeDossierTab === 'surgeries' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="font-extrabold text-sm text-slate-900">
+                          Historial Quirúrgico & Procedimientos
+                        </h4>
+                        <p className="text-xs text-slate-500">
+                          Intervenciones de quirófano, esterilizaciones y procedimientos mayores
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectedPetForDossier(null);
+                          setActiveTab('surgeries');
+                        }}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl"
+                      >
+                        Ver Quirófano &rarr;
+                      </button>
+                    </div>
+
+                    {dossierSurgeries.length === 0 ? (
+                      <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
+                        <Scissors className="w-8 h-8 text-slate-400 mx-auto" />
+                        <div className="font-bold text-xs text-slate-700">Sin cirugías registradas</div>
+                        <p className="text-[11px] text-slate-500">
+                          Este paciente no tiene procedimientos quirúrgicos pasados ni programados.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {dossierSurgeries.map((surg) => (
+                          <div key={surg.id} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-xs text-slate-900">{surg.procedure}</span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-950">
+                                {surg.status}
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-600">
+                              <div><strong>Fecha:</strong> {surg.date} {surg.time && `&bull; ${surg.time}`}</div>
+                              <div><strong>Quirófano / Sala:</strong> {surg.room || 'Quirófano Principal'}</div>
+                              {surg.notes && <div className="mt-1 text-slate-500 italic">{surg.notes}</div>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 4: HOSPITALIZACIÓN */}
+                {activeDossierTab === 'hospital' && (
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="font-extrabold text-sm text-slate-900">
+                        Estado de Hospitalización & Jaulas
+                      </h4>
+                      <p className="text-xs text-slate-500">
+                        Estancia clínica y monitoreo en piso de hospitalización
+                      </p>
+                    </div>
+
+                    {dossierCage ? (
+                      <div className="p-5 rounded-2xl bg-rose-50 border-2 border-rose-300 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-black text-sm text-rose-950 flex items-center gap-2">
+                            <Building className="w-5 h-5 text-rose-800" />
+                            Paciente Actualmente Hospitalizado en Jaula {dossierCage.code}
+                          </span>
+                          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-rose-600 text-white animate-pulse">
+                            En Internamiento
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-700 space-y-1">
+                          <div><strong>Tipo de Jaula:</strong> {dossierCage.type}</div>
+                          <div><strong>Ubicación:</strong> {dossierCage.location}</div>
+                          {dossierCage.currentOccupant?.reason && (
+                            <div><strong>Motivo de Ingreso:</strong> {dossierCage.currentOccupant.reason}</div>
+                          )}
+                          {dossierCage.currentOccupant?.intakeTime && (
+                            <div><strong>Hora de Ingreso:</strong> {dossierCage.currentOccupant.intakeTime}</div>
+                          )}
+                        </div>
+                        <div className="pt-2">
+                          <button
+                            onClick={() => {
+                              setSelectedPetForDossier(null);
+                              setActiveTab('cages');
+                            }}
+                            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs rounded-xl shadow-xs"
+                          >
+                            Ir a Monitoreo de Jaulas &rarr;
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
+                        <Building className="w-8 h-8 text-slate-400 mx-auto" />
+                        <div className="font-bold text-xs text-slate-700">Paciente Ambulatorio (No Hospitalizado)</div>
+                        <p className="text-[11px] text-slate-500">
+                          {dossierPet.name} no se encuentra actualmente en ninguna jaula de hospitalización.
+                        </p>
+                        <button
+                          onClick={() => {
+                            setSelectedPetForDossier(null);
+                            setActiveTab('cages');
+                          }}
+                          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs"
+                        >
+                          Ver Jaulas Disponibles
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* FOOTER ACTIONS */}
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const id = dossierPet.id;
+                      setSelectedPetForDossier(null);
+                      if (openPetPassport) openPetPassport(id);
+                      else setActiveTab('passport');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl shadow-2xs transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-rose-900" />
+                    Ver Cartilla Oficial
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSelectedPetForDossier(null);
+                      setActiveTab('agenda');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl shadow-2xs transition-colors"
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                    Agendar Cita
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setSelectedPetForDossier(null)}
+                  className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-all"
+                >
+                  Cerrar Expediente
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

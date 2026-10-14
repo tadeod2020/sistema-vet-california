@@ -63,7 +63,20 @@ export const INITIAL_DATA = {
       color: "Canela dorado con pecho blanco",
       allergies: "Ninguna conocida",
       microchip: "985141004829103",
-      notes: "Rescatada hace 2 años en Otay, muy dócil."
+      photoUrl: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=600&q=80",
+      notes: "Rescatada hace 2 años en Otay, muy dócil.",
+      clinicalNotes: [
+        {
+          id: "cn-1",
+          date: "2026-10-10 11:30",
+          vet: "Médico Veterinario de Guardia",
+          reason: "Control preventivo semestral y peso",
+          diagnosis: "Paciente normopeso, auscultación cardiopulmonar sin soplos.",
+          vitals: { temp: "38.5°C", weight: "14.5 kg", heartRate: "115 lpm" },
+          treatment: "Desparasitación interna con Endovet. Próxima desparasitación en 6 meses.",
+          nextCheckup: "2027-04-10"
+        }
+      ]
     },
     {
       id: "pet-2",
@@ -77,7 +90,20 @@ export const INITIAL_DATA = {
       color: "Negro con manto fuego",
       allergies: "Sensibilidad estomacal a granos",
       microchip: "985141004829104",
-      notes: "En entrenamiento."
+      photoUrl: "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?auto=format&fit=crop&w=600&q=80",
+      notes: "En entrenamiento.",
+      clinicalNotes: [
+        {
+          id: "cn-2",
+          date: "2026-09-18 16:45",
+          vet: "Médico Veterinario de Guardia",
+          reason: "Gastroenteritis leve por cambio de alimento",
+          diagnosis: "Irritación intestinal alimentaria sin fiebre.",
+          vitals: { temp: "38.7°C", weight: "24.0 kg", heartRate: "120 lpm" },
+          treatment: "Probióticos y dieta blanda (pollo hervido y arroz) por 5 días.",
+          nextCheckup: "2026-10-18"
+        }
+      ]
     },
     {
       id: "pet-3",
@@ -91,7 +117,20 @@ export const INITIAL_DATA = {
       color: "Dorado claro",
       allergies: "Alergia a piquete de pulga",
       microchip: "985141003719001",
-      notes: "Cruza frecuentemente a EE.UU., vacunas de Rabia al día."
+      photoUrl: "https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=600&q=80",
+      notes: "Cruza frecuentemente a EE.UU., vacunas de Rabia al día.",
+      clinicalNotes: [
+        {
+          id: "cn-3",
+          date: "2026-08-15 09:00",
+          vet: "Médico Veterinario de Guardia",
+          reason: "Emisión de Certificado de Salud para Cruce Internacional EE.UU.",
+          diagnosis: "Apto clínicamente para viaje internacional (San Ysidro / Otay Mesa).",
+          vitals: { temp: "38.3°C", weight: "31.8 kg", heartRate: "95 lpm" },
+          treatment: "Vacuna Antirrábica y Séxtuple certificadas con holograma en Passport to Travel.",
+          nextCheckup: "2027-08-15"
+        }
+      ]
     },
     {
       id: "pet-4",
@@ -105,7 +144,9 @@ export const INITIAL_DATA = {
       color: "Fawn point",
       allergies: "Ninguna",
       microchip: "",
-      notes: "Gata de departamento."
+      photoUrl: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=600&q=80",
+      notes: "Gata de departamento.",
+      clinicalNotes: []
     },
     {
       id: "pet-5",
@@ -119,7 +160,20 @@ export const INITIAL_DATA = {
       color: "Atigrado",
       allergies: "Dermatitis atópica",
       microchip: "985141009988221",
-      notes: "Revisión constante de vías respiratorias."
+      photoUrl: "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?auto=format&fit=crop&w=600&q=80",
+      notes: "Revisión constante de vías respiratorias.",
+      clinicalNotes: [
+        {
+          id: "cn-4",
+          date: "2026-10-02 12:15",
+          vet: "Médico Veterinario de Guardia",
+          reason: "Picazón en pliegues faciales y patas",
+          diagnosis: "Brote de dermatitis atópica estacional.",
+          vitals: { temp: "38.4°C", weight: "12.0 kg", heartRate: "125 lpm" },
+          treatment: "Limpieza diaria con toallitas de clorhexidina y Apoquel según prescripción.",
+          nextCheckup: "2026-11-02"
+        }
+      ]
     }
   ],
 

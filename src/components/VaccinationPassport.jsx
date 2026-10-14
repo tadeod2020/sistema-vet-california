@@ -34,12 +34,18 @@ const CLINIC_SERVICES = [
 ];
 
 export function VaccinationPassport() {
-  const { pets, clients, vaccinations, addVaccination } = useApp();
+  const { pets, clients, vaccinations, addVaccination, selectedPetIdForPassport, updatePet } = useApp();
 
-  const [selectedPetId, setSelectedPetId] = useState(() => pets.length > 0 ? pets[0].id : null);
+  const [selectedPetId, setSelectedPetId] = useState(() => selectedPetIdForPassport || (pets.length > 0 ? pets[0].id : null));
   const [activeCarnetPage, setActiveCarnetPage] = useState('spread'); // 'spread' (interior completo) | 'cover' | 'vaccines'
   const [isVacModalOpen, setIsVacModalOpen] = useState(false);
   const [petPhotoUrl, setPetPhotoUrl] = useState({});
+
+  React.useEffect(() => {
+    if (selectedPetIdForPassport) {
+      setSelectedPetId(selectedPetIdForPassport);
+    }
+  }, [selectedPetIdForPassport]);
 
   // Form State
   const [vacForm, setVacForm] = useState({
@@ -75,8 +81,15 @@ export function VaccinationPassport() {
   const handlePhotoUpload = (e) => {
     const file = e.target.files[0];
     if (file && selectedPet) {
-      const url = URL.createObjectURL(file);
-      setPetPhotoUrl(prev => ({ ...prev, [selectedPet.id]: url }));
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result;
+        setPetPhotoUrl(prev => ({ ...prev, [selectedPet.id]: base64 }));
+        if (updatePet) {
+          updatePet(selectedPet.id, { photoUrl: base64 });
+        }
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -362,10 +375,10 @@ export function VaccinationPassport() {
 
                 {/* RIGHT BOX: BIG ROUNDED RECTANGLE FOR PET PHOTO */}
                 <div className="md:col-span-5 rounded-2xl border-2 border-slate-900 p-4 flex flex-col items-center justify-center min-h-[300px] relative bg-slate-50/50 group">
-                  {petPhotoUrl[selectedPet.id] ? (
+                  {(petPhotoUrl[selectedPet.id] || selectedPet.photoUrl) ? (
                     <div className="w-full h-full rounded-xl overflow-hidden flex flex-col items-center justify-center">
                       <img 
-                        src={petPhotoUrl[selectedPet.id]} 
+                        src={petPhotoUrl[selectedPet.id] || selectedPet.photoUrl} 
                         alt={selectedPet.name} 
                         className="w-full h-64 object-cover rounded-xl shadow-xs"
                       />

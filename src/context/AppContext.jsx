@@ -39,9 +39,18 @@ export function AppProvider({ children }) {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        const mergedPets = (parsed.pets || INITIAL_DATA.pets).map(p => {
+          const initP = INITIAL_DATA.pets.find(ip => ip.id === p.id);
+          return {
+            ...p,
+            photoUrl: p.photoUrl || initP?.photoUrl || '',
+            clinicalNotes: p.clinicalNotes || initP?.clinicalNotes || []
+          };
+        });
         return {
           ...INITIAL_DATA,
           ...parsed,
+          pets: mergedPets,
           cages: parsed.cages && parsed.cages.length > 0 ? parsed.cages : INITIAL_DATA.cages
         };
       }
@@ -53,6 +62,7 @@ export function AppProvider({ children }) {
 
   const [activeTab, setActiveTab] = useState('agenda'); // agenda | clients | rescues | surgeries | passport
   const [notification, setNotification] = useState(null);
+  const [selectedPetIdForPassport, setSelectedPetIdForPassport] = useState(null);
 
   // Auto-save to LocalStorage
   useEffect(() => {
@@ -165,10 +175,61 @@ export function AppProvider({ children }) {
   };
 
   const addPet = (newPet) => {
-    const created = { ...newPet, id: `pet-${Date.now()}` };
+    const created = {
+      photoUrl: '',
+      clinicalNotes: [],
+      ...newPet,
+      id: newPet.id || `pet-${Date.now()}`
+    };
     setData(prev => ({ ...prev, pets: [created, ...prev.pets] }));
     showToast(`Mascota ${created.name} dada de alta en el sistema`);
     return created;
+  };
+
+  const updatePet = (petId, fields) => {
+    setData(prev => ({
+      ...prev,
+      pets: prev.pets.map(p => p.id === petId ? { ...p, ...fields } : p)
+    }));
+    showToast('Datos de la mascota actualizados');
+  };
+
+  const addClinicalNote = (petId, note) => {
+    const newNote = {
+      id: `cn-${Date.now()}`,
+      date: note.date || new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }),
+      vet: note.vet || 'Médico Veterinario de Guardia',
+      reason: note.reason || 'Consulta General',
+      diagnosis: note.diagnosis || 'Revisión general satisfactoria',
+      vitals: {
+        temp: note.vitals?.temp || (note.temperature ? `${note.temperature}°C` : '38.5°C'),
+        weight: note.vitals?.weight || (note.weight ? `${note.weight} kg` : 'N/E'),
+        heartRate: note.vitals?.heartRate || (note.heartRate ? `${note.heartRate} lpm` : 'Normal')
+      },
+      treatment: note.treatment || 'Sin tratamiento farmacológico indicado.',
+      nextCheckup: note.nextCheckup || ''
+    };
+
+    setData(prev => ({
+      ...prev,
+      pets: prev.pets.map(p => {
+        if (p.id === petId) {
+          return {
+            ...p,
+            clinicalNotes: [newNote, ...(p.clinicalNotes || [])]
+          };
+        }
+        return p;
+      })
+    }));
+
+    showToast('Nota médica agregada al expediente');
+    return newNote;
+  };
+
+  const openPetPassport = (petId) => {
+    setSelectedPetIdForPassport(petId);
+    setActiveTab('passport');
   };
 
   // Alta Directa de Mascota (Solo 3 campos obligatorios: petName, ownerName, ownerPhone)
@@ -214,6 +275,8 @@ export function AppProvider({ children }) {
       color: optionalFields.color || 'Sin especificar',
       allergies: optionalFields.allergies || 'Ninguna conocida',
       microchip: optionalFields.microchip || '',
+      photoUrl: optionalFields.photoUrl || '',
+      clinicalNotes: optionalFields.clinicalNotes || [],
       notes: optionalFields.notes || ''
     };
 
@@ -448,7 +511,12 @@ export function AppProvider({ children }) {
         deleteAppointment,
         addClient,
         addPet,
+        updatePet,
+        addClinicalNote,
         registerPetDirect,
+        selectedPetIdForPassport,
+        setSelectedPetIdForPassport,
+        openPetPassport,
         addRescue,
         addRescueIntervention,
         updateRescueStatus,
