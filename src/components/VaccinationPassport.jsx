@@ -17,6 +17,7 @@ import {
   Camera,
   Layers,
   BookOpen,
+  Check,
   CheckSquare,
   Square,
   Sparkles
