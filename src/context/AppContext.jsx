@@ -1,0 +1,241 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { INITIAL_DATA } from '../data/initialData';
+
+const AppContext = createContext();
+
+const STORAGE_KEY = 'vet_california_system_v1';
+
+export function AppProvider({ children }) {
+  const [data, setData] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Error loading saved state:', e);
+    }
+    return INITIAL_DATA;
+  });
+
+  const [activeTab, setActiveTab] = useState('agenda'); // agenda | clients | rescues | surgeries | passport
+  const [notification, setNotification] = useState(null);
+
+  // Auto-save to LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.error('Error persisting state:', e);
+    }
+  }, [data]);
+
+  // Toast / Notification helper
+  const showToast = (message, type = 'success') => {
+    setNotification({ message, type, id: Date.now() });
+    setTimeout(() => {
+      setNotification(prev => (prev?.message === message ? null : prev));
+    }, 3800);
+  };
+
+  // Agenda: Validate strict max 2 appointments per hour slot
+  const addAppointment = (newApt) => {
+    const existingInSlot = data.appointments.filter(
+      apt => apt.date === newApt.date && apt.timeHour === newApt.timeHour && apt.status !== 'Cancelada'
+    );
+
+    if (existingInSlot.length >= 2) {
+      showToast(`¡Sobrecupo! El bloque de las ${newApt.timeHour} ya tiene el máximo permitido de 2 citas.`, 'error');
+      return { success: false, reason: 'slot_full' };
+    }
+
+    const created = {
+      ...newApt,
+      id: `apt-${Date.now()}`,
+      slotIndex: existingInSlot.length + 1
+    };
+
+    setData(prev => ({
+      ...prev,
+      appointments: [created, ...prev.appointments]
+    }));
+
+    showToast(`Cita agendada con éxito para las ${newApt.timeHour} (Cupo ${existingInSlot.length + 1}/2)`);
+    return { success: true };
+  };
+
+  const updateAppointmentStatus = (aptId, newStatus) => {
+    setData(prev => ({
+      ...prev,
+      appointments: prev.appointments.map(apt => 
+        apt.id === aptId ? { ...apt, status: newStatus } : apt
+      )
+    }));
+    showToast(`Estado de cita actualizado a: ${newStatus}`);
+  };
+
+  const deleteAppointment = (aptId) => {
+    setData(prev => ({
+      ...prev,
+      appointments: prev.appointments.filter(apt => apt.id !== aptId)
+    }));
+    showToast('Cita cancelada/eliminada del registro', 'info');
+  };
+
+  // Clientes y Mascotas
+  const addClient = (newClient) => {
+    const created = { ...newClient, id: `cli-${Date.now()}` };
+    setData(prev => ({ ...prev, clients: [created, ...prev.clients] }));
+    showToast(`Cliente ${created.name} registrado con éxito`);
+    return created;
+  };
+
+  const addPet = (newPet) => {
+    const created = { ...newPet, id: `pet-${Date.now()}` };
+    setData(prev => ({ ...prev, pets: [created, ...prev.pets] }));
+    showToast(`Mascota ${created.name} dada de alta en el sistema`);
+    return created;
+  };
+
+  // Rescates (Perros y gatos sin nombre con descripción física)
+  const addRescue = (newRescue) => {
+    const created = {
+      ...newRescue,
+      id: `resc-${Date.now()}`,
+      code: `RES-${new Date().getFullYear()}-${String(data.rescues.length + 1).padStart(3, '0')}`,
+      intakeDate: newRescue.intakeDate || new Date().toISOString().split('T')[0],
+      interventions: newRescue.interventions || []
+    };
+    setData(prev => ({ ...prev, rescues: [created, ...prev.rescues] }));
+    showToast(`Rescate registrado con código ${created.code}`);
+    return created;
+  };
+
+  const addRescueIntervention = (rescueId, intervention) => {
+    const newIntervention = {
+      ...intervention,
+      date: intervention.date || new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })
+    };
+
+    setData(prev => ({
+      ...prev,
+      rescues: prev.rescues.map(resc => {
+        if (resc.id === rescueId) {
+          return {
+            ...resc,
+            interventions: [newIntervention, ...(resc.interventions || [])]
+          };
+        }
+        return resc;
+      })
+    }));
+
+    showToast('Intervención clínica agregada a la bitácora del rescate');
+  };
+
+  const updateRescueStatus = (rescueId, newStatus) => {
+    setData(prev => ({
+      ...prev,
+      rescues: prev.rescues.map(r => r.id === rescueId ? { ...r, healthStatus: newStatus } : r)
+    }));
+    showToast(`Estado de salud del rescate actualizado: ${newStatus}`);
+  };
+
+  // Cirugías
+  const addSurgery = (newSurgery) => {
+    const created = { ...newSurgery, id: `surg-${Date.now()}` };
+    setData(prev => ({ ...prev, surgeries: [created, ...prev.surgeries] }));
+    showToast(`Procedimiento quirúrgico registrado: ${created.procedure}`);
+    return created;
+  };
+
+  const updateSurgeryStatus = (surgeryId, newStatus) => {
+    setData(prev => ({
+      ...prev,
+      surgeries: prev.surgeries.map(s => s.id === surgeryId ? { ...s, status: newStatus } : s)
+    }));
+    showToast(`Cirugía actualizada a: ${newStatus}`);
+  };
+
+  // Vacunación y Passport to Travel
+  const addVaccination = (newVac) => {
+    const created = { ...newVac, id: `vac-${Date.now()}` };
+    setData(prev => ({ ...prev, vaccinations: [created, ...prev.vaccinations] }));
+    showToast(`Vacuna ${created.vaccineName} registrada en cartilla oficial`);
+    return created;
+  };
+
+  // Respaldos (Exportar / Importar)
+  const exportBackup = () => {
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup_vet_california_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Respaldo de base de datos descargado con éxito');
+  };
+
+  const importBackup = (jsonString) => {
+    try {
+      const parsed = JSON.parse(jsonString);
+      if (parsed.clients && parsed.pets && parsed.appointments) {
+        setData(parsed);
+        showToast('Base de datos restaurada correctamente');
+        return true;
+      } else {
+        showToast('El archivo no tiene el formato válido del sistema', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error al procesar el archivo JSON', 'error');
+      return false;
+    }
+  };
+
+  const resetToDefaults = () => {
+    if (window.confirm('¿Seguro que deseas restaurar los datos de demostración de Servicio Veterinario California? Se sobreescribirán los cambios no respaldados.')) {
+      setData(INITIAL_DATA);
+      showToast('Datos reiniciados a los valores de fábrica de demostración');
+    }
+  };
+
+  return (
+    <AppContext.Provider
+      value={{
+        ...data,
+        activeTab,
+        setActiveTab,
+        notification,
+        showToast,
+        // Methods
+        addAppointment,
+        updateAppointmentStatus,
+        deleteAppointment,
+        addClient,
+        addPet,
+        addRescue,
+        addRescueIntervention,
+        updateRescueStatus,
+        addSurgery,
+        updateSurgeryStatus,
+        addVaccination,
+        exportBackup,
+        importBackup,
+        resetToDefaults
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+}
+
+export function useApp() {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useApp must be used within an AppProvider');
+  }
+  return context;
+}
