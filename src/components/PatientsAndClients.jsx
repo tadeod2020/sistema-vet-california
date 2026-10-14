@@ -30,8 +30,10 @@ import {
   ExternalLink,
   ChevronRight,
   Clock,
-  Trash2
+  Trash2,
+  Printer
 } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 
 export function PatientsAndClients() {
   const { 
@@ -62,6 +64,7 @@ export function PatientsAndClients() {
   const [selectedPetForDossier, setSelectedPetForDossier] = useState(null);
   const [activeDossierTab, setActiveDossierTab] = useState('consultations'); // 'consultations' | 'vaccines' | 'surgeries' | 'hospital'
   const [isAddingNote, setIsAddingNote] = useState(false);
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
   const [noteForm, setNoteForm] = useState({
     reason: '',
     diagnosis: '',
@@ -1048,12 +1051,23 @@ export function PatientsAndClients() {
                       )}
                     </div>
 
-                    <button
-                      onClick={() => setSelectedPetForDossier(null)}
-                      className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors self-start"
-                    >
-                      <XCircle className="w-6 h-6" />
-                    </button>
+                    <div className="flex items-center gap-2 self-start">
+                      <button
+                        onClick={() => setIsPrintPreviewOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xs rounded-xl shadow-2xs transition-all active:scale-95 cursor-pointer"
+                        title="Imprimir Resumen Clínico / Guardar en PDF"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-rose-950" />
+                        <span className="hidden sm:inline">Imprimir / PDF</span>
+                      </button>
+
+                      <button
+                        onClick={() => setSelectedPetForDossier(null)}
+                        className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                      >
+                        <XCircle className="w-6 h-6" />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1562,7 +1576,15 @@ export function PatientsAndClients() {
 
               {/* FOOTER ACTIONS */}
               <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => setIsPrintPreviewOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 font-black text-xs rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-rose-950" />
+                    Exportar / Imprimir PDF
+                  </button>
+
                   <button
                     onClick={() => {
                       const id = dossierPet.id;
@@ -1595,6 +1617,339 @@ export function PatientsAndClients() {
                   Cerrar Expediente
                 </button>
               </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ========================================================================= */}
+      {/* MODAL: VISTA PREVIA Y EXPORTACIÓN EN PDF / IMPRESIÓN OFICIAL */}
+      {/* ========================================================================= */}
+      {isPrintPreviewOpen && selectedPetForDossier && (() => {
+        const dossierPet = pets.find(p => p.id === selectedPetForDossier.id) || selectedPetForDossier;
+        const dossierOwner = clients.find(c => c.id === dossierPet.clientId);
+        const dossierVaccines = vaccinations.filter(v => v.petId === dossierPet.id || v.petName?.toLowerCase() === dossierPet.name.toLowerCase());
+        const dossierSurgeries = surgeries.filter(s => s.petId === dossierPet.id || s.petName?.toLowerCase() === dossierPet.name.toLowerCase());
+        const notes = dossierPet.clinicalNotes || [];
+        const reportFolio = `EXP-${dossierPet.id.replace('pet-', '').toUpperCase()}-${new Date().getFullYear()}`;
+        const currentDate = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+
+        return (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/85 backdrop-blur-md flex flex-col items-center justify-start p-2 sm:p-6 animate-fadeIn">
+            {/* Top floating bar (hidden during print) */}
+            <div className="no-print max-w-4xl w-full bg-slate-900 text-white rounded-2xl p-4 mb-4 shadow-2xl flex flex-wrap items-center justify-between gap-3 sticky top-4 z-20 border border-slate-700">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-bold">
+                  <Printer className="w-5 h-5 text-rose-950" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-white flex items-center gap-2">
+                    Resumen Clínico Oficial &bull; {dossierPet.name}
+                    <span className="text-[10px] font-mono bg-slate-800 text-amber-400 px-2 py-0.5 rounded border border-slate-700">
+                      FOLIO: {reportFolio}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-300">
+                    Formato membretado listo para imprimir o descargar como archivo PDF oficial
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 font-black text-xs rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4 text-rose-950" />
+                  Imprimir / Guardar en PDF
+                </button>
+                <button
+                  onClick={() => setIsPrintPreviewOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Cerrar Vista Previa
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Document Paper */}
+            <div className="printable-clinical-report bg-white text-slate-900 max-w-4xl w-full p-6 sm:p-10 rounded-3xl shadow-2xl border-2 border-slate-200 print:border-none print:shadow-none print:p-0 print:rounded-none space-y-5 my-auto">
+              
+              {/* OFFICIAL CLINIC LETTERHEAD */}
+              <div className="border-b-2 border-slate-900 pb-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <BrandLogo className="w-14 h-14" />
+                    <div>
+                      <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-tight">
+                        SERVICIO VETERINARIO CALIFORNIA
+                      </h1>
+                      <p className="text-xs font-bold text-rose-900 uppercase tracking-widest">
+                        Todo para su mascota &bull; Tijuana, B.C.
+                      </p>
+                      <div className="text-[11px] text-slate-600 font-medium mt-0.5">
+                        Matriz: Calle 3ra #7184, Zona Centro, Tijuana &bull; Tel. (664) 685-8512
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-left sm:text-right self-stretch sm:self-auto space-y-1 text-xs border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-200">
+                    <div className="inline-block font-mono font-bold text-slate-900 bg-slate-100 px-3 py-1 rounded-md border border-slate-300">
+                      FOLIO: {reportFolio}
+                    </div>
+                    <div className="text-[11px] text-slate-600">
+                      Fecha de Emisión: <strong>{currentDate}</strong>
+                    </div>
+                    <div className="text-[10px] text-rose-900 font-bold uppercase">
+                      Documento Oficial Certificado
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-2.5 border-t border-slate-200 flex flex-wrap items-center justify-between text-[11px] text-slate-500 gap-2">
+                  <span><strong>Granero California:</strong> Calle 3ra #7160 (Tel. 664-688-2875)</span>
+                  <span><strong>Acua-Vet GDL:</strong> Av. Mutualismo #887 (Tel. 664-685-9961)</span>
+                  <span><strong>Registro Sanitario:</strong> REG-VET-TJ-2026</span>
+                </div>
+              </div>
+
+              {/* TITLE BANNER */}
+              <div className="text-center bg-slate-900 text-white py-2 px-4 rounded-xl">
+                <h2 className="text-sm sm:text-base font-black tracking-wider uppercase">
+                  RESUMEN DE EXPEDIENTE CLÍNICO VETERINARIO
+                </h2>
+                <span className="text-[10px] text-amber-400 font-bold tracking-wide uppercase">
+                  OFFICIAL VETERINARY CLINICAL SUMMARY & HEALTH RECORD &bull; CBP TRAVEL COMPLIANT
+                </span>
+              </div>
+
+              {/* SECTION I: PATIENT & OWNER */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch">
+                
+                {/* Left 8 cols: Patient Details */}
+                <div className="md:col-span-8 p-4 rounded-2xl border border-slate-300 bg-slate-50/40 space-y-2 text-xs">
+                  <div className="font-black text-xs uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1 flex items-center justify-between">
+                    <span>I. DATOS DE IDENTIDAD DEL PACIENTE / PATIENT IDENTIFICATION</span>
+                    <span className="font-mono text-[10px] font-bold text-slate-600">ID: {dossierPet.id}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-1">
+                    <div>
+                      <span className="font-bold text-slate-500 block text-[10px]">Nombre del Paciente / Name:</span>
+                      <span className="font-black text-sm text-slate-900">{dossierPet.name}</span>
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-500 block text-[10px]">Especie / Species:</span>
+                      <span className="font-bold text-slate-800">{dossierPet.species}</span>
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-500 block text-[10px]">Raza / Breed:</span>
+                      <span className="font-semibold text-slate-800">{dossierPet.breed}</span>
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-500 block text-[10px]">Sexo / Sex:</span>
+                      <span className="font-semibold text-slate-800">{dossierPet.sex}</span>
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-500 block text-[10px]">Edad / Age:</span>
+                      <span className="font-semibold text-slate-800">{dossierPet.ageYears} años</span>
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-500 block text-[10px]">Peso Actual / Weight:</span>
+                      <span className="font-bold text-slate-900">{dossierPet.weightKg} kg</span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="font-bold text-slate-500 block text-[10px]">Color y Señas Particulares / Markings:</span>
+                      <span className="font-semibold text-slate-800">{dossierPet.color || 'No especificadas'}</span>
+                    </div>
+                  </div>
+
+                  {/* Microchip Badge */}
+                  <div className="mt-2 p-2 rounded-xl bg-amber-50 border border-amber-300 flex items-center justify-between">
+                    <span className="font-bold text-[11px] text-amber-950">
+                      Microchip Identificador (ISO 11784/11785 CBP EE.UU.):
+                    </span>
+                    <span className="font-mono font-black text-xs text-rose-950">
+                      {dossierPet.microchip || 'Pendiente / Sin registrar'}
+                    </span>
+                  </div>
+
+                  {dossierPet.allergies && dossierPet.allergies !== 'Ninguna' && (
+                    <div className="p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-950 text-[11px] font-bold">
+                      ⚠️ Alergias o Condiciones Crónicas: {dossierPet.allergies}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right 4 cols: Photo */}
+                <div className="md:col-span-4 p-3 rounded-2xl border border-slate-300 flex flex-col items-center justify-center bg-slate-50/40">
+                  {dossierPet.photoUrl ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center">
+                      <img 
+                        src={dossierPet.photoUrl} 
+                        alt={dossierPet.name} 
+                        className="w-full h-40 object-cover rounded-xl border border-slate-300 shadow-2xs" 
+                      />
+                      <span className="text-[10px] font-bold text-slate-500 mt-1 uppercase">
+                        Fotografía Oficial de Registro
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-center p-4 text-slate-400">
+                      <PawPrint className="w-12 h-12 mx-auto text-slate-300 mb-1" />
+                      <span className="text-[10px] font-bold block uppercase text-slate-500">Sin Fotografía</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* SECTION II: OWNER DETAILS */}
+              <div className="p-3.5 rounded-2xl border border-slate-300 bg-slate-50/20 space-y-1.5 text-xs">
+                <div className="font-black text-xs uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
+                  II. PROPIETARIO / RESPONSABLE LEGAL (OWNER INFORMATION)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-0.5">
+                  <div>
+                    <span className="font-bold text-slate-500 block text-[10px]">Nombre Completo / Owner Name:</span>
+                    <span className="font-bold text-slate-900">{dossierOwner ? dossierOwner.name : 'Cliente Registrado'}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-500 block text-[10px]">Teléfono / Phone Number:</span>
+                    <span className="font-semibold text-slate-800">{dossierOwner?.phone || '-'}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-500 block text-[10px]">Domicilio / Address:</span>
+                    <span className="font-semibold text-slate-800">{dossierOwner?.address || 'Tijuana, B.C.'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION III: VACCINES TABLE */}
+              <div className="space-y-1.5 text-xs">
+                <div className="font-black text-xs uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1 flex items-center justify-between">
+                  <span>III. ESQUEMA DE VACUNACIÓN / VACCINATION RECORD</span>
+                  <span className="text-[10px] font-semibold text-slate-500">Aprobado para Cruce Fronterizo CBP</span>
+                </div>
+
+                {dossierVaccines.length === 0 ? (
+                  <div className="p-2.5 text-center text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs">
+                    Sin vacunas registradas en la cartilla digital al momento de esta emisión.
+                  </div>
+                ) : (
+                  <table className="w-full text-left border-collapse border border-slate-300 text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-300 font-black text-slate-900 text-[10px] uppercase">
+                        <th className="p-2 border-r border-slate-300">Vacuna / Biological</th>
+                        <th className="p-2 border-r border-slate-300">Fabricante & Lote / Lot</th>
+                        <th className="p-2 border-r border-slate-300">Aplicación / Date</th>
+                        <th className="p-2 border-r border-slate-300">Vencimiento / Due Date</th>
+                        <th className="p-2">Médico / Cédula</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dossierVaccines.map((v, idx) => (
+                        <tr key={idx} className="border-b border-slate-200 even:bg-slate-50/50">
+                          <td className="p-2 font-bold text-slate-900 border-r border-slate-200">{v.vaccineName}</td>
+                          <td className="p-2 font-mono text-[11px] border-r border-slate-200">{v.manufacturer} &bull; {v.lotNumber}</td>
+                          <td className="p-2 font-semibold border-r border-slate-200">{v.appliedDate}</td>
+                          <td className="p-2 font-bold text-rose-950 border-r border-slate-200">{v.dueDate}</td>
+                          <td className="p-2 text-slate-600 text-[11px]">{v.vetName || 'Médico Veterinario Autorizado'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* SECTION IV: CONSULTATION NOTES */}
+              <div className="space-y-1.5 text-xs">
+                <div className="font-black text-xs uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1">
+                  IV. HISTORIAL DE CONSULTAS, CONSTANTES VITALES & TRATAMIENTOS
+                </div>
+
+                {notes.length === 0 ? (
+                  <div className="p-2.5 text-center text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs">
+                    No se registran notas médicas en el historial clínico.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {notes.map((n, idx) => (
+                      <div key={idx} className="p-2.5 rounded-xl border border-slate-300 bg-white space-y-1 text-xs">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-1">
+                          <span className="font-black text-slate-900">{n.reason}</span>
+                          <span className="font-mono text-slate-500 text-[11px] font-bold">{n.date}</span>
+                        </div>
+                        {n.vitals && (
+                          <div className="flex flex-wrap items-center gap-2.5 text-[10px] font-semibold text-slate-700 bg-slate-50 p-1.5 rounded-md border border-slate-200">
+                            {n.vitals.temp && <span>🌡️ Temp: <strong>{n.vitals.temp}</strong></span>}
+                            {n.vitals.weight && <span>⚖️ Peso: <strong>{n.vitals.weight}</strong></span>}
+                            {n.vitals.heartRate && <span>❤️ F.C.: <strong>{n.vitals.heartRate}</strong></span>}
+                            <span className="text-slate-400">|</span>
+                            <span>Médico: {n.vet || 'Médico Veterinario de Guardia'}</span>
+                          </div>
+                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-0.5">
+                          <div>
+                            <strong className="text-slate-700">Diagnóstico:</strong> {n.diagnosis}
+                          </div>
+                          <div>
+                            <strong className="text-rose-950">Tratamiento Indicado:</strong> {n.treatment}
+                          </div>
+                        </div>
+                        {n.nextCheckup && (
+                          <div className="text-[10px] text-emerald-800 font-semibold pt-0.5">
+                            Próxima cita de revisión programada: {n.nextCheckup}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION V: SURGERIES IF ANY */}
+              {dossierSurgeries.length > 0 && (
+                <div className="space-y-1.5 text-xs">
+                  <div className="font-black text-xs uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1">
+                    V. PROCEDIMIENTOS QUIRÚRGICOS
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {dossierSurgeries.map((s, idx) => (
+                      <div key={idx} className="p-2 rounded-xl border border-slate-200 bg-slate-50 text-[11px]">
+                        <div className="font-bold text-slate-900">{s.procedure}</div>
+                        <div className="text-slate-600">Fecha: {s.date} {s.time && `&bull; ${s.time}`}</div>
+                        <div className="text-slate-500 font-medium">Estado: {s.status}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* OFFICIAL SIGNATURE & STAMP BLOCK */}
+              <div className="pt-6 border-t-2 border-slate-900">
+                <div className="grid grid-cols-2 gap-8 text-center text-xs">
+                  <div className="flex flex-col items-center justify-end">
+                    <div className="w-56 border-b-2 border-slate-900 mb-2"></div>
+                    <span className="font-black text-slate-900 text-xs">MÉDICO VETERINARIO RESPONSABLE</span>
+                    <span className="text-[11px] text-slate-600">C.M.V.Z. &bull; Céd. Prof. 8492019-BC</span>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider">Servicio Veterinario California</span>
+                  </div>
+
+                  <div className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-slate-400 rounded-2xl min-h-[90px] bg-slate-50/50">
+                    <span className="text-[11px] font-black text-slate-600 uppercase tracking-widest">
+                      SELLO OFICIAL DE LA CLÍNICA
+                    </span>
+                    <span className="text-[9px] text-slate-400 mt-1 uppercase">
+                      Servicio Veterinario California &bull; Tijuana B.C.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-center text-[10px] text-slate-400 mt-5 font-medium">
+                  Este resumen médico veterinario certifica el estado de salud y registro clínico del paciente a la fecha de emisión. Documento expedido por Servicio Veterinario California para fines médicos, informativos o de cruce fronterizo hacia los Estados Unidos.
+                </div>
+              </div>
+
             </div>
           </div>
         );

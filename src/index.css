@@ -55,3 +55,42 @@
   background: rgba(148, 163, 184, 0.7);
 }
 
+/* Print & PDF Export Rules for Clinical Dossier */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .printable-clinical-report,
+  .printable-clinical-report * {
+    visibility: visible;
+  }
+
+  .printable-clinical-report {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  @page {
+    size: letter portrait;
+    margin: 12mm 14mm;
+  }
+}
+

@@ -5,3 +5,7 @@ dist
 .env
 .env.*
 !.env.example
+test_run.log
+test_report.json
+test_screenshots/
+scripts/
