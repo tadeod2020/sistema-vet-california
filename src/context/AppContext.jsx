@@ -116,19 +116,24 @@ export function AppProvider({ children }) {
     showToast('Sesión cerrada con éxito', 'info');
   };
 
-  // Agenda: Validate strict max 2 appointments per hour slot
+  // Agenda: Soporta múltiples citas por hora y 2 o más mascotas por cita
   const addAppointment = (newApt) => {
     const existingInSlot = data.appointments.filter(
       apt => apt.date === newApt.date && apt.timeHour === newApt.timeHour && apt.status !== 'Cancelada'
     );
 
-    if (existingInSlot.length >= 2) {
-      showToast(`¡Sobrecupo! El bloque de las ${newApt.timeHour} ya tiene el máximo permitido de 2 citas.`, 'error');
-      return { success: false, reason: 'slot_full' };
-    }
+    const cleanPetNames = Array.isArray(newApt.petNames)
+      ? newApt.petNames.map(n => n.trim()).filter(Boolean)
+      : (newApt.petName ? [newApt.petName.trim()].filter(Boolean) : []);
+
+    const combinedPetName = cleanPetNames.length > 0
+      ? cleanPetNames.join(', ')
+      : (newApt.petName || '').trim();
 
     const created = {
       ...newApt,
+      petName: combinedPetName,
+      petNames: cleanPetNames.length > 0 ? cleanPetNames : [combinedPetName].filter(Boolean),
       id: `apt-${Date.now()}`,
       slotIndex: existingInSlot.length + 1
     };
@@ -138,7 +143,33 @@ export function AppProvider({ children }) {
       appointments: [created, ...prev.appointments]
     }));
 
-    showToast(`Cita agendada con éxito para las ${newApt.timeHour} (Cupo ${existingInSlot.length + 1}/2)`);
+    const petCountLabel = created.petNames.length > 1 ? ` (${created.petNames.length} mascotas)` : '';
+    showToast(`Cita agendada para las ${newApt.timeHour}${petCountLabel}`);
+    return { success: true, appointment: created };
+  };
+
+  const updateAppointment = (aptId, updatedFields) => {
+    const cleanPetNames = Array.isArray(updatedFields.petNames)
+      ? updatedFields.petNames.map(n => n.trim()).filter(Boolean)
+      : (updatedFields.petName ? [updatedFields.petName.trim()].filter(Boolean) : undefined);
+
+    const combinedPetName = cleanPetNames && cleanPetNames.length > 0
+      ? cleanPetNames.join(', ')
+      : updatedFields.petName;
+
+    setData(prev => ({
+      ...prev,
+      appointments: prev.appointments.map(apt => {
+        if (apt.id !== aptId) return apt;
+        return {
+          ...apt,
+          ...updatedFields,
+          ...(combinedPetName !== undefined ? { petName: combinedPetName } : {}),
+          ...(cleanPetNames !== undefined ? { petNames: cleanPetNames } : {})
+        };
+      })
+    }));
+    showToast('Cita médica actualizada con éxito');
     return { success: true };
   };
 
@@ -549,6 +580,7 @@ export function AppProvider({ children }) {
         CLINIC_DOCTORS,
         // Methods
         addAppointment,
+        updateAppointment,
         updateAppointmentStatus,
         deleteAppointment,
         addClient,

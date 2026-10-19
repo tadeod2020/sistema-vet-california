@@ -2,11 +2,11 @@
 
 ## Requisitos Funcionales (RF)
 
-### RF-01: Agenda por Bloques Horarios (Regla de 2 citas/hora)
-- Visualización de agenda diaria y semanal por bloques de 1 hora (de 8:00 AM a 8:00 PM).
-- Cada bloque tiene un tope estricto de **máximo 2 personas/citas por hora**.
-- Si el bloque ya tiene 2 citas, el sistema inhabilita la adición o muestra advertencia clara de sobrecupo.
-- Registro rápido de cita: Dueño/Mascota, motivo de visita, hora, estado (Pendiente, En Consulta, Completada, Cancelada).
+### RF-01: Agenda por Bloques Horarios (Edición de Citas y Soporte Multi-Mascota)
+- Visualización de agenda diaria por bloques de 1 hora (de 8:00 AM a 7:00 PM).
+- Soporte para registrar **2 o más perros/mascotas dentro de una misma cita** o múltiples citas dentro de un mismo bloque horario.
+- **Edición completa de citas médicas**: cambio de fecha, hora, dueño, lista de perros/mascotas, motivo de visita, veterinario asignado y estado.
+- Registro rápido de cita: Dueño/Mascotas, motivo de visita, hora, estado (Pendiente, En Espera, En Consulta, Completada, Cancelada).
 
 ### RF-02: Base de Datos de Clientes & Clientes Frecuentes
 - Gestión de clientes con indicador de "Cliente Frecuente / Rescatista".
