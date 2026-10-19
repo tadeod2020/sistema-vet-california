@@ -4,11 +4,11 @@ import { INITIAL_DATA, CLINIC_DOCTORS } from '../data/initialData';
 const AppContext = createContext();
 
 const STORAGE_KEY = 'vet_california_system_v2_clean';
-const AUTH_STORAGE_KEY = 'vet_california_auth_session_v2';
+const AUTH_STORAGE_KEY = 'vet_california_auth_session_v3';
 
 export const CLINIC_CREDENTIALS = {
   email: 'servetcalifornia@gmail.com',
-  password: 'contra servet',
+  password: 'servet',
   name: 'Personal Veterinario California',
   role: 'Personal Clínico Autorizado'
 };
