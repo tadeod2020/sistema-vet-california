@@ -1,30 +1,27 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { INITIAL_DATA } from '../data/initialData';
+import { INITIAL_DATA, CLINIC_DOCTORS } from '../data/initialData';
 
 const AppContext = createContext();
 
-const STORAGE_KEY = 'vet_california_system_v1';
-const AUTH_STORAGE_KEY = 'vet_california_auth_session';
+const STORAGE_KEY = 'vet_california_system_v2_clean';
+const AUTH_STORAGE_KEY = 'vet_california_auth_session_v2';
 
-export const PROVISIONAL_CREDENTIALS = {
-  email: 'admin@veterinariacalifornia.com',
-  password: 'california2026',
-  name: 'Administrador',
+export const CLINIC_CREDENTIALS = {
+  email: 'servetcalifornia@gmail.com',
+  password: 'contra servet',
+  name: 'Personal Veterinario California',
   role: 'Personal Clínico Autorizado'
 };
+
+// Aliased for backwards compatibility
+export const PROVISIONAL_CREDENTIALS = CLINIC_CREDENTIALS;
 
 export function AppProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const savedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
       if (savedAuth) {
-        const parsed = JSON.parse(savedAuth);
-        if (parsed?.name?.includes('Mario') || parsed?.name?.includes('Estrada')) {
-          parsed.name = 'Administrador';
-          parsed.role = 'Personal Clínico Autorizado';
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(parsed));
-        }
-        return parsed;
+        return JSON.parse(savedAuth);
       }
     } catch (e) {
       console.error('Error loading auth session:', e);
@@ -39,19 +36,15 @@ export function AppProvider({ children }) {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        const mergedPets = (parsed.pets || INITIAL_DATA.pets).map(p => {
-          const initP = INITIAL_DATA.pets.find(ip => ip.id === p.id);
-          return {
-            ...p,
-            photoUrl: p.photoUrl || initP?.photoUrl || '',
-            clinicalNotes: p.clinicalNotes || initP?.clinicalNotes || [],
-            labResults: p.labResults || initP?.labResults || []
-          };
-        });
         return {
           ...INITIAL_DATA,
           ...parsed,
-          pets: mergedPets,
+          pets: parsed.pets || [],
+          clients: parsed.clients || [],
+          appointments: parsed.appointments || [],
+          rescues: parsed.rescues || [],
+          surgeries: parsed.surgeries || [],
+          vaccinations: parsed.vaccinations || [],
           cages: parsed.cages && parsed.cages.length > 0 ? parsed.cages : INITIAL_DATA.cages
         };
       }
@@ -88,13 +81,13 @@ export function AppProvider({ children }) {
     const cleanPass = (inputPassword || '').trim();
 
     if (
-      (cleanEmail === PROVISIONAL_CREDENTIALS.email.toLowerCase() || cleanEmail === 'doctor@vetcalifornia.com' || cleanEmail === 'admin@vetcalifornia.com') &&
-      (cleanPass === PROVISIONAL_CREDENTIALS.password || cleanPass === 'california2026')
+      cleanEmail === CLINIC_CREDENTIALS.email.toLowerCase() &&
+      cleanPass === CLINIC_CREDENTIALS.password
     ) {
       const user = {
-        name: PROVISIONAL_CREDENTIALS.name,
+        name: CLINIC_CREDENTIALS.name,
         email: cleanEmail,
-        role: PROVISIONAL_CREDENTIALS.role,
+        role: CLINIC_CREDENTIALS.role,
         loginAt: new Date().toISOString()
       };
       setCurrentUser(user);
@@ -103,13 +96,13 @@ export function AppProvider({ children }) {
       } catch (e) {
         console.error('Error storing session:', e);
       }
-      showToast(`¡Bienvenido al sistema clínico, ${user.name}!`);
+      showToast(`¡Bienvenido al sistema clínico!`);
       return { success: true };
     }
 
     return { 
       success: false, 
-      error: 'Correo o contraseña incorrectos. Usa el botón "⚡ Autorrellenar" para probar las credenciales provisionales.' 
+      error: 'Correo o contraseña incorrectos. Verifica tus credenciales de acceso.' 
     };
   };
 
@@ -552,6 +545,8 @@ export function AppProvider({ children }) {
         login,
         logout,
         PROVISIONAL_CREDENTIALS,
+        CLINIC_CREDENTIALS,
+        CLINIC_DOCTORS,
         // Methods
         addAppointment,
         updateAppointmentStatus,

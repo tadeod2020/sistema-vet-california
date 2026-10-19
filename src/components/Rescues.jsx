@@ -39,7 +39,7 @@ export function Rescues() {
     type: 'Curación & Tratamiento',
     description: '',
     meds: '',
-    vet: 'Médico Veterinario de Turno'
+    vet: 'Dra. María José Mendoza Gutiérrez'
   });
 
   const handleCreateRescue = (e) => {
@@ -484,12 +484,12 @@ export function Rescues() {
                 <select
                   value={interventionForm.vet}
                   onChange={(e) => setInterventionForm(prev => ({ ...prev, vet: e.target.value }))}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none font-semibold text-slate-800"
                 >
-                  <option value="Médico Veterinario de Turno">Médico Veterinario de Turno</option>
-                  <option value="Personal Clínico California">Personal Clínico California</option>
-                  <option value="Especialista en Rehabilitación">Especialista en Rehabilitación</option>
-                  <option value="Atención General">Atención General</option>
+                  <option value="Dra. María José Mendoza Gutiérrez">Dra. María José Mendoza Gutiérrez</option>
+                  <option value="Dr. Miguel Ángel Michel Rea">Dr. Miguel Ángel Michel Rea</option>
+                  <option value="Dr. José Rubén Estrada Hernández">Dr. José Rubén Estrada Hernández</option>
+                  <option value="Dr. César Wilfredo Solórzano Hernández">Dr. César Wilfredo Solórzano Hernández</option>
                 </select>
               </div>
 

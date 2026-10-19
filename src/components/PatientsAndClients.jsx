@@ -92,7 +92,7 @@ export function PatientsAndClients() {
     weight: '',
     heartRate: '',
     nextCheckup: '',
-    vet: 'Médico Veterinario de Guardia'
+    vet: 'Dra. María José Mendoza Gutiérrez'
   });
 
   // Quick Pet Form (Only 3 required fields: ownerPhone, ownerName, petName + optional photoUrl)
@@ -237,7 +237,8 @@ export function PatientsAndClients() {
       temperature: '',
       weight: '',
       heartRate: '',
-      vet: 'Médico Veterinario de Guardia'
+      nextCheckup: '',
+      vet: 'Dra. María José Mendoza Gutiérrez'
     });
   };
 
@@ -1287,12 +1288,16 @@ export function PatientsAndClients() {
 
                           <div>
                             <label className="block font-bold text-slate-800 mb-1">Médico Veterinario</label>
-                            <input
-                              type="text"
+                            <select
                               value={noteForm.vet}
                               onChange={(e) => setNoteForm(prev => ({ ...prev, vet: e.target.value }))}
-                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none text-slate-900"
-                            />
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none font-semibold text-slate-900"
+                            >
+                              <option value="Dra. María José Mendoza Gutiérrez">Dra. María José Mendoza Gutiérrez</option>
+                              <option value="Dr. Miguel Ángel Michel Rea">Dr. Miguel Ángel Michel Rea</option>
+                              <option value="Dr. José Rubén Estrada Hernández">Dr. José Rubén Estrada Hernández</option>
+                              <option value="Dr. César Wilfredo Solórzano Hernández">Dr. César Wilfredo Solórzano Hernández</option>
+                            </select>
                           </div>
                         </div>
 

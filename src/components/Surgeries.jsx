@@ -22,14 +22,15 @@ export function Surgeries() {
   const [selectedSurgery, setSelectedSurgery] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [isCustomProcedure, setIsCustomProcedure] = useState(false);
 
   // New Surgery Form State
   const [form, setForm] = useState({
     patientName: '',
     patientType: 'Mascota con dueño',
     ownerName: '',
-    procedure: 'Ovariohisterectomía (Esterilización)',
-    surgeon: 'Cirujano Titular',
+    procedure: 'Ovariohisterectomía (Esterilización Hembra)',
+    surgeon: 'Dra. María José Mendoza Gutiérrez',
     anesthetist: 'Especialista en Anestesiología',
     date: new Date().toISOString().split('T')[0],
     anesthesiaType: 'Inhalatoria (Isoflurano) + Premedicación',
@@ -53,12 +54,13 @@ export function Surgeries() {
 
     addSurgery(form);
     setIsModalOpen(false);
+    setIsCustomProcedure(false);
     setForm({
       patientName: '',
       patientType: 'Mascota con dueño',
       ownerName: '',
-      procedure: 'Ovariohisterectomía (Esterilización)',
-      surgeon: 'Cirujano Titular',
+      procedure: 'Ovariohisterectomía (Esterilización Hembra)',
+      surgeon: 'Dra. María José Mendoza Gutiérrez',
       anesthetist: 'Especialista en Anestesiología',
       date: new Date().toISOString().split('T')[0],
       anesthesiaType: 'Inhalatoria (Isoflurano) + Premedicación',
@@ -141,8 +143,27 @@ export function Surgeries() {
       </div>
 
       {/* Surgeries Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filteredSurgeries.map((surgery) => (
+      {filteredSurgeries.length === 0 ? (
+        <div className="text-center py-16 px-4 bg-white/70 border border-dashed border-slate-300 rounded-3xl space-y-3">
+          <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto shadow-inner">
+            <Scissors className="w-7 h-7 text-rose-900" />
+          </div>
+          <div className="font-extrabold text-base text-slate-800">
+            No hay cirugías registradas
+          </div>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            El quirófano se encuentra limpio y disponible. Haz clic en "+ Nueva Cirugía" para programar una intervención quirúrgica.
+          </p>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="px-4 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95"
+          >
+            + Programar Primera Cirugía
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filteredSurgeries.map((surgery) => (
           <div
             key={surgery.id}
             className="glass-card rounded-2xl p-5 border border-slate-200/90 shadow-xs flex flex-col justify-between hover:border-amber-300 transition-all"
@@ -222,6 +243,7 @@ export function Surgeries() {
           </div>
         ))}
       </div>
+      )}
 
       {/* Modal: Detalle de Hoja Quirúrgica */}
       {selectedSurgery && (
@@ -392,14 +414,53 @@ export function Surgeries() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Procedimiento Quirúrgico *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej. Ovariohisterectomía, Orquiectomía, Limpieza Dental Ultrasónica..."
-                  value={form.procedure}
-                  onChange={(e) => setForm(prev => ({ ...prev, procedure: e.target.value }))}
-                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
-                />
+                <div className="space-y-2">
+                  <select
+                    value={isCustomProcedure ? 'OTRO' : (form.procedure || 'Ovariohisterectomía (Esterilización)')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'OTRO') {
+                        setIsCustomProcedure(true);
+                        setForm(prev => ({ ...prev, procedure: '' }));
+                      } else {
+                        setIsCustomProcedure(false);
+                        setForm(prev => ({ ...prev, procedure: val }));
+                      }
+                    }}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none font-semibold text-slate-900"
+                  >
+                    <optgroup label="Procedimientos Frecuentes">
+                      <option value="Ovariohisterectomía (Esterilización Hembra)">Ovariohisterectomía (Esterilización Hembra)</option>
+                      <option value="Orquiectomía (Castración Macho)">Orquiectomía (Castración Macho)</option>
+                      <option value="Profilaxis & Limpieza Dental Ultrasónica">Profilaxis & Limpieza Dental Ultrasónica</option>
+                      <option value="Extracción de Pieza Dental">Extracción de Pieza Dental</option>
+                      <option value="Sutura y Cierre de Herida Traumatológica">Sutura y Cierre de Herida Traumatológica</option>
+                      <option value="Cesárea de Emergencia">Cesárea de Emergencia</option>
+                      <option value="Extirpación de Neoplasia / Tumor Cutáneo">Extirpación de Neoplasia / Tumor Cutáneo</option>
+                      <option value="Drenaje y Desbridamiento de Absceso">Drenaje y Desbridamiento de Absceso</option>
+                      <option value="Cirugía Ocular (Entropión / Ojo de Cereza)">Cirugía Ocular (Entropión / Ojo de Cereza)</option>
+                      <option value="Laparotomía Exploratoria / Cuerpo Extraño">Laparotomía Exploratoria / Cuerpo Extraño</option>
+                    </optgroup>
+                    <option value="OTRO">➕ Otro Tipo de Cirugía (Personalizada)...</option>
+                  </select>
+
+                  {isCustomProcedure && (
+                    <div className="animate-slideDown">
+                      <input
+                        type="text"
+                        required
+                        autoFocus
+                        placeholder="Escribe el nombre o tipo de cirugía personalizada..."
+                        value={form.procedure}
+                        onChange={(e) => setForm(prev => ({ ...prev, procedure: e.target.value }))}
+                        className="w-full px-3 py-2 text-xs bg-amber-50/70 border-2 border-amber-400 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none font-bold text-slate-900"
+                      />
+                      <p className="text-[10px] text-amber-800 mt-1 font-semibold">
+                        Especifica el procedimiento particular o técnica quirúrgica.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -408,11 +469,12 @@ export function Surgeries() {
                   <select
                     value={form.surgeon}
                     onChange={(e) => setForm(prev => ({ ...prev, surgeon: e.target.value }))}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none font-semibold text-slate-800"
                   >
-                    <option value="Cirujano Titular">Cirujano Titular</option>
-                    <option value="Cirujano Especialista de Turno">Cirujano Especialista de Turno</option>
-                    <option value="Equipo Quirúrgico California">Equipo Quirúrgico California</option>
+                    <option value="Dra. María José Mendoza Gutiérrez">Dra. María José Mendoza Gutiérrez</option>
+                    <option value="Dr. Miguel Ángel Michel Rea">Dr. Miguel Ángel Michel Rea</option>
+                    <option value="Dr. José Rubén Estrada Hernández">Dr. José Rubén Estrada Hernández</option>
+                    <option value="Dr. César Wilfredo Solórzano Hernández">Dr. César Wilfredo Solórzano Hernández</option>
                   </select>
                 </div>
                 <div>

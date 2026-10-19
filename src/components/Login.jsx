@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export function Login() {
-  const { login, PROVISIONAL_CREDENTIALS } = useApp();
+  const { login } = useApp();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,12 +35,6 @@ export function Login() {
         setIsLoading(false);
       }
     }, 400);
-  };
-
-  const fillProvisionalCredentials = () => {
-    setEmail(PROVISIONAL_CREDENTIALS.email);
-    setPassword(PROVISIONAL_CREDENTIALS.password);
-    setErrorMsg('');
   };
 
   return (
@@ -159,34 +153,6 @@ export function Login() {
               )}
             </button>
           </form>
-
-          {/* Quick-Fill Provisional Credentials Box */}
-          <div className="mt-4 pt-4 border-t border-slate-200/70 space-y-2.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-extrabold text-slate-700 flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
-                Credenciales Provisionales:
-              </span>
-              <button
-                type="button"
-                onClick={fillProvisionalCredentials}
-                className="text-[11px] font-bold text-[#7A1416] hover:text-rose-900 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
-              >
-                ⚡ Autorrellenar
-              </button>
-            </div>
-
-            <div className="bg-slate-50/90 rounded-xl p-3 border border-slate-200 text-xs font-mono space-y-1 text-slate-600">
-              <div className="flex justify-between items-center">
-                <span className="text-[11px] text-slate-400 font-sans font-bold">Correo:</span>
-                <span className="font-bold text-slate-800">{PROVISIONAL_CREDENTIALS.email}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[11px] text-slate-400 font-sans font-bold">Contraseña:</span>
-                <span className="font-bold text-[#7A1416]">{PROVISIONAL_CREDENTIALS.password}</span>
-              </div>
-            </div>
-          </div>
 
         </div>
 

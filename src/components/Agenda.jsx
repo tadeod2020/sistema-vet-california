@@ -33,7 +33,7 @@ export function Agenda() {
     clientName: "",
     petName: "",
     reason: "",
-    assignedVet: "Médico Veterinario de Guardia"
+    assignedVet: "Dra. María José Mendoza Gutiérrez"
   });
 
   // Filter appointments for selected day
@@ -77,7 +77,7 @@ export function Agenda() {
         clientName: "",
         petName: "",
         reason: "",
-        assignedVet: "Médico Veterinario de Guardia"
+        assignedVet: "Dra. María José Mendoza Gutiérrez"
       });
     }
   };
@@ -434,12 +434,12 @@ export function Agenda() {
                 <select
                   value={formData.assignedVet}
                   onChange={(e) => setFormData(prev => ({ ...prev, assignedVet: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none font-semibold text-slate-800"
                 >
-                  <option value="Médico Veterinario de Guardia">Médico Veterinario de Guardia</option>
-                  <option value="Personal Clínico California">Personal Clínico California</option>
-                  <option value="Especialista en Consulta">Especialista en Consulta</option>
-                  <option value="Atención General">Atención General</option>
+                  <option value="Dra. María José Mendoza Gutiérrez">Dra. María José Mendoza Gutiérrez</option>
+                  <option value="Dr. Miguel Ángel Michel Rea">Dr. Miguel Ángel Michel Rea</option>
+                  <option value="Dr. José Rubén Estrada Hernández">Dr. José Rubén Estrada Hernández</option>
+                  <option value="Dr. César Wilfredo Solórzano Hernández">Dr. César Wilfredo Solórzano Hernández</option>
                 </select>
               </div>
 

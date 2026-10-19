@@ -53,7 +53,7 @@ export function VaccinationPassport() {
     lotNumber: 'RAB-2026-TJ',
     appliedDate: new Date().toISOString().split('T')[0],
     dueDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
-    vetName: 'Médico Veterinario Autorizado',
+    vetName: 'Dra. María José Mendoza Gutiérrez',
     licenseNumber: 'CÉD. PROF. 8492019-BC',
     notes: 'Aprobado para cruce fronterizo EE.UU. / California CBP'
   });
@@ -690,9 +690,10 @@ export function VaccinationPassport() {
                     }))}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
                   >
-                    <option value="Médico Veterinario Autorizado">Médico Veterinario Autorizado</option>
-                    <option value="Personal Clínico California">Personal Clínico California</option>
-                    <option value="Director Médico Veterinario">Director Médico Veterinario</option>
+                    <option value="Dra. María José Mendoza Gutiérrez">Dra. María José Mendoza Gutiérrez</option>
+                    <option value="Dr. Miguel Ángel Michel Rea">Dr. Miguel Ángel Michel Rea</option>
+                    <option value="Dr. José Rubén Estrada Hernández">Dr. José Rubén Estrada Hernández</option>
+                    <option value="Dr. César Wilfredo Solórzano Hernández">Dr. César Wilfredo Solórzano Hernández</option>
                   </select>
                 </div>
                 <div>
