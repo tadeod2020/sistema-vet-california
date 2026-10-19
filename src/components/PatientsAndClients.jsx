@@ -36,7 +36,8 @@ import {
   UploadCloud,
   Eye,
   Download,
-  FileUp
+  FileUp,
+  Pencil
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 
@@ -64,6 +65,7 @@ export function PatientsAndClients() {
 
   // Modal states
   const [isQuickPetModalOpen, setIsQuickPetModalOpen] = useState(false);
+  const [editingPetId, setEditingPetId] = useState(null);
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [showOptionalFields, setShowOptionalFields] = useState(false);
 
@@ -126,6 +128,51 @@ export function PatientsAndClients() {
     notes: ''
   });
 
+  const resetQuickPetModal = () => {
+    setIsQuickPetModalOpen(false);
+    setEditingPetId(null);
+    setQuickPetForm({
+      ownerPhone: '',
+      ownerName: '',
+      petName: '',
+      photoUrl: '',
+      species: 'Canino',
+      breed: '',
+      ageYears: '',
+      sex: 'Macho',
+      weightKg: '',
+      color: '',
+      allergies: '',
+      microchip: '',
+      notes: '',
+      ownerAddress: ''
+    });
+    setShowOptionalFields(false);
+  };
+
+  const handleOpenEditPet = (pet) => {
+    const owner = clients.find(c => c.id === pet.clientId);
+    setEditingPetId(pet.id);
+    setQuickPetForm({
+      ownerPhone: owner?.phone || '',
+      ownerName: owner?.name || '',
+      ownerAddress: owner?.address || '',
+      petName: pet.name || '',
+      photoUrl: pet.photoUrl || '',
+      species: pet.species || 'Canino',
+      breed: pet.breed === 'Sin especificar' ? '' : (pet.breed || ''),
+      ageYears: pet.ageYears ?? '',
+      sex: pet.sex || 'Macho',
+      weightKg: pet.weightKg ?? '',
+      color: pet.color === 'Sin especificar' ? '' : (pet.color || ''),
+      allergies: pet.allergies === 'Ninguna conocida' ? '' : (pet.allergies || ''),
+      microchip: pet.microchip || '',
+      notes: pet.notes || ''
+    });
+    setShowOptionalFields(true);
+    setIsQuickPetModalOpen(true);
+  };
+
   const handleQuickPetPhoto = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -173,6 +220,27 @@ export function PatientsAndClients() {
       return;
     }
 
+    if (editingPetId) {
+      updatePet(editingPetId, {
+        ownerPhone: quickPetForm.ownerPhone,
+        ownerName: quickPetForm.ownerName,
+        ownerAddress: quickPetForm.ownerAddress,
+        petName: quickPetForm.petName,
+        photoUrl: quickPetForm.photoUrl || '',
+        species: quickPetForm.species || 'Canino',
+        breed: quickPetForm.breed.trim() || 'Sin especificar',
+        ageYears: quickPetForm.ageYears !== '' ? Number(quickPetForm.ageYears) : 1,
+        sex: quickPetForm.sex || 'Macho',
+        weightKg: quickPetForm.weightKg !== '' ? Number(quickPetForm.weightKg) : 0,
+        color: quickPetForm.color.trim() || 'Sin especificar',
+        allergies: quickPetForm.allergies.trim() || 'Ninguna conocida',
+        microchip: quickPetForm.microchip.trim(),
+        notes: quickPetForm.notes
+      });
+      resetQuickPetModal();
+      return;
+    }
+
     registerPetDirect({
       ownerPhone: quickPetForm.ownerPhone,
       ownerName: quickPetForm.ownerName,
@@ -190,24 +258,7 @@ export function PatientsAndClients() {
       ownerAddress: quickPetForm.ownerAddress
     });
 
-    setIsQuickPetModalOpen(false);
-    setQuickPetForm({
-      ownerPhone: '',
-      ownerName: '',
-      petName: '',
-      photoUrl: '',
-      species: 'Canino',
-      breed: '',
-      ageYears: '',
-      sex: 'Macho',
-      weightKg: '',
-      color: '',
-      allergies: '',
-      microchip: '',
-      notes: '',
-      ownerAddress: ''
-    });
-    setShowOptionalFields(false);
+    resetQuickPetModal();
   };
 
   const handleAddNoteSubmit = (e) => {
@@ -370,7 +421,10 @@ export function PatientsAndClients() {
         {/* Action Buttons */}
         <div className="flex items-center gap-2.5 w-full md:w-auto">
           <button
-            onClick={() => setIsQuickPetModalOpen(true)}
+            onClick={() => {
+              resetQuickPetModal();
+              setIsQuickPetModalOpen(true);
+            }}
             className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-amber-950 font-black text-xs rounded-xl shadow-xs transition-all active:scale-95"
           >
             <Plus className="w-4 h-4 text-rose-900 stroke-[3]" />
@@ -485,6 +539,16 @@ export function PatientsAndClients() {
                         {pet.breed} &bull; {pet.sex}
                       </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditPet(pet)}
+                      title={`Editar información de ${pet.name}`}
+                      aria-label={`Editar información de ${pet.name}`}
+                      className="p-2 rounded-xl text-slate-500 hover:text-amber-950 hover:bg-amber-100 border border-transparent hover:border-amber-200 transition-colors shrink-0"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
                   </div>
 
                   {/* Owner Information (Essential contact) */}
@@ -538,7 +602,15 @@ export function PatientsAndClients() {
                   <span className="text-[10px] text-slate-400 font-mono truncate">
                     {pet.microchip ? `Chip: ${pet.microchip.slice(-6)}` : 'Sin chip'}
                   </span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditPet(pet)}
+                      className="px-2.5 py-1 font-bold text-xs bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg transition-colors flex items-center gap-1 shadow-2xs"
+                    >
+                      <Pencil className="w-3 h-3 text-slate-500" />
+                      Editar
+                    </button>
                     <button
                       onClick={() => {
                         setSelectedPetForDossier(pet);
@@ -626,9 +698,35 @@ export function PatientsAndClients() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {clientPets.map(pet => (
-                      <div key={pet.id} className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs">
-                        <div className="font-bold text-slate-900">{pet.name}</div>
-                        <div className="text-[11px] text-slate-500">{pet.breed} &bull; {pet.ageYears} años</div>
+                      <div key={pet.id} className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-900 truncate">{pet.name}</div>
+                          <div className="text-[11px] text-slate-500 truncate">{pet.breed} &bull; {pet.ageYears} años</div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditPet(pet)}
+                            title={`Editar ${pet.name}`}
+                            aria-label={`Editar ${pet.name}`}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-amber-950 hover:bg-amber-100 border border-slate-200 transition-colors"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPetForDossier(pet);
+                              setActiveDossierTab('consultations');
+                              setIsAddingNote(false);
+                            }}
+                            title={`Expediente de ${pet.name}`}
+                            aria-label={`Expediente de ${pet.name}`}
+                            className="p-1.5 rounded-lg text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-colors"
+                          >
+                            <FolderOpen className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -640,26 +738,36 @@ export function PatientsAndClients() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: ALTA RÁPIDA DE MASCOTA (Solo 3 obligatorios: Teléfono, Dueño, Perro) */}
+      {/* MODAL: ALTA RÁPIDA O EDICIÓN DE MASCOTA */}
       {/* ========================================================================= */}
       {isQuickPetModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-slideUp max-h-[92vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-bold">
-                  <PawPrint className="w-5 h-5 text-rose-900" />
+                  {editingPetId ? (
+                    <Pencil className="w-5 h-5 text-rose-900" />
+                  ) : (
+                    <PawPrint className="w-5 h-5 text-rose-900" />
+                  )}
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-base text-slate-900">Alta Rápida de Mascota</h3>
+                  <h3 className="font-extrabold text-base text-slate-900">
+                    {editingPetId ? 'Editar Información de la Mascota' : 'Alta Rápida de Mascota'}
+                  </h3>
                   <p className="text-xs text-rose-900 font-semibold">
-                    Solo 3 datos obligatorios: Teléfono, Dueño y Perro
+                    {editingPetId
+                      ? 'Actualiza los datos de identificación, clínicos o del propietario'
+                      : 'Solo 3 datos obligatorios: Teléfono, Dueño y Perro'}
                   </p>
                 </div>
               </div>
               <button 
-                onClick={() => setIsQuickPetModalOpen(false)}
+                type="button"
+                onClick={resetQuickPetModal}
+                aria-label="Cerrar ventana"
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
               >
                 <XCircle className="w-5 h-5" />
@@ -671,7 +779,7 @@ export function PatientsAndClients() {
               <div className="p-4 rounded-2xl bg-amber-50/80 border-2 border-amber-300 space-y-3 shadow-xs">
                 <div className="text-xs font-black text-rose-950 uppercase tracking-wide flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-rose-900" />
-                  Datos Obligatorios de Registro
+                  {editingPetId ? 'Datos Principales de Mascota y Propietario' : 'Datos Obligatorios de Registro'}
                 </div>
 
                 {/* 1. Teléfono del Dueño */}
@@ -733,7 +841,7 @@ export function PatientsAndClients() {
                 >
                   <span className="flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    Datos Adicionales Clínicos (Opcionales: Raza, Edad, Peso, Color...)
+                    Datos Clínicos de la Mascota (Raza, Edad, Peso, Color, Microchip...)
                   </span>
                   {showOptionalFields ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
@@ -867,15 +975,27 @@ export function PatientsAndClients() {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block font-semibold text-slate-600 mb-1">Alergias o Notas Médicas</label>
-                      <input
-                        type="text"
-                        placeholder="Ej. Alergia a pulgas..."
-                        value={quickPetForm.allergies}
-                        onChange={(e) => setQuickPetForm(prev => ({ ...prev, allergies: e.target.value }))}
-                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg"
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block font-semibold text-slate-600 mb-1">Alergias o Condiciones Médicas</label>
+                        <input
+                          type="text"
+                          placeholder="Ej. Alergia a pulgas..."
+                          value={quickPetForm.allergies}
+                          onChange={(e) => setQuickPetForm(prev => ({ ...prev, allergies: e.target.value }))}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-semibold text-slate-600 mb-1">Dirección / Colonia del Dueño</label>
+                        <input
+                          type="text"
+                          placeholder="Ej. Zona Centro, Playas..."
+                          value={quickPetForm.ownerAddress}
+                          onChange={(e) => setQuickPetForm(prev => ({ ...prev, ownerAddress: e.target.value }))}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -885,7 +1005,7 @@ export function PatientsAndClients() {
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setIsQuickPetModalOpen(false)}
+                  onClick={resetQuickPetModal}
                   className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
                 >
                   Cancelar
@@ -894,7 +1014,7 @@ export function PatientsAndClients() {
                   type="submit"
                   className="px-6 py-2.5 text-xs font-black text-amber-950 bg-amber-400 hover:bg-amber-500 rounded-xl shadow-xs transition-all active:scale-95"
                 >
-                  Guardar Mascota y Dueño
+                  {editingPetId ? 'Guardar Cambios' : 'Guardar Mascota y Dueño'}
                 </button>
               </div>
             </form>
@@ -1069,6 +1189,15 @@ export function PatientsAndClients() {
                         <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
                           {dossierPet.breed}
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditPet(dossierPet)}
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-white hover:bg-amber-100 text-slate-700 hover:text-amber-950 border border-slate-300 text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                          title="Editar información de la mascota"
+                        >
+                          <Pencil className="w-3 h-3 text-rose-900" />
+                          Editar Datos
+                        </button>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-slate-600">

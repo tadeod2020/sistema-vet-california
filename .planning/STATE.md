@@ -9,7 +9,7 @@
   - [x] Documentación de visión y requisitos en `.planning/`
   - [x] Arquitectura React + Vite + Tailwind CSS con diseño Apple-Style
   - [x] Agenda flexible con edición de citas médicas y soporte de 2 o más perros por cita y por hora
-  - [x] Directorio de clientes frecuentes y soporte de múltiples mascotas
+  - [x] Directorio de clientes frecuentes, soporte de múltiples mascotas y edición completa de información de mascotas
   - [x] Módulo de rescates sin nombre con descripción física y bitácora de intervenciones
   - [x] Registro y protocolos de cirugías
   - [x] Cartilla de vacunación y generador bilingüe de "Passport to Travel" imprimible

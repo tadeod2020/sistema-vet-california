@@ -13,8 +13,9 @@
 - Relación 1 a N: Un cliente puede tener múltiples mascotas asociadas.
 - Datos de contacto: Nombre, teléfono, WhatsApp directo (con link `https://wa.me/`), notas.
 
-### RF-03: Ficha de Mascotas
-- Nombre, especie, raza, edad/fecha nacimiento, sexo, peso, color, antecedentes y alergias.
+### RF-03: Ficha de Mascotas y Edición de Datos
+- Nombre, especie, raza, edad/fecha nacimiento, sexo, peso, color, microchip, antecedentes y alergias.
+- **Edición completa de la información de la mascota** (desde el directorio de mascotas, lista por propietario, expediente clínico digital y cartilla oficial), incluyendo actualización sincronizada de datos del propietario y vacunas.
 - Acceso directo desde la ficha a su historial de vacunas, cirugías y citas.
 
 ### RF-04: Módulo de Rescates (Animales sin nombre)

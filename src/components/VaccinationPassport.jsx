@@ -19,7 +19,8 @@ import {
   Check,
   CheckSquare,
   Square,
-  Sparkles
+  Sparkles,
+  Pencil
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 
@@ -38,6 +39,7 @@ export function VaccinationPassport() {
   const [selectedPetId, setSelectedPetId] = useState(() => selectedPetIdForPassport || (pets.length > 0 ? pets[0].id : null));
   const [activeCarnetPage, setActiveCarnetPage] = useState('spread'); // 'spread' (interior completo) | 'cover' | 'vaccines'
   const [isVacModalOpen, setIsVacModalOpen] = useState(false);
+  const [isEditPetModalOpen, setIsEditPetModalOpen] = useState(false);
   const [petPhotoUrl, setPetPhotoUrl] = useState({});
 
   React.useEffect(() => {
@@ -61,6 +63,63 @@ export function VaccinationPassport() {
   const selectedPet = pets.find(p => p.id === selectedPetId) || pets[0] || null;
   const petOwner = selectedPet ? clients.find(c => c.id === selectedPet.clientId) : null;
   const petVaccines = vaccinations.filter(v => v.petId === selectedPet?.id);
+
+  const [editPetForm, setEditPetForm] = useState({
+    petName: '',
+    species: 'Canino',
+    breed: '',
+    color: '',
+    ageYears: '',
+    weightKg: '',
+    sex: 'Macho',
+    microchip: '',
+    allergies: '',
+    ownerName: '',
+    ownerPhone: '',
+    ownerAddress: '',
+    ownerEmail: ''
+  });
+
+  const handleOpenEditPetModal = () => {
+    if (!selectedPet) return;
+    setEditPetForm({
+      petName: selectedPet.name || '',
+      species: selectedPet.species || 'Canino',
+      breed: selectedPet.breed === 'Sin especificar' ? '' : (selectedPet.breed || ''),
+      color: selectedPet.color === 'Sin especificar' ? '' : (selectedPet.color || ''),
+      ageYears: selectedPet.ageYears ?? '',
+      weightKg: selectedPet.weightKg ?? '',
+      sex: selectedPet.sex || 'Macho',
+      microchip: selectedPet.microchip || '',
+      allergies: selectedPet.allergies === 'Ninguna conocida' ? '' : (selectedPet.allergies || ''),
+      ownerName: petOwner?.name || '',
+      ownerPhone: petOwner?.phone || '',
+      ownerAddress: petOwner?.address || '',
+      ownerEmail: petOwner?.email || ''
+    });
+    setIsEditPetModalOpen(true);
+  };
+
+  const handleSavePetEdit = (e) => {
+    e.preventDefault();
+    if (!selectedPet || !editPetForm.petName.trim()) return;
+    updatePet(selectedPet.id, {
+      petName: editPetForm.petName.trim(),
+      species: editPetForm.species || 'Canino',
+      breed: editPetForm.breed.trim() || 'Sin especificar',
+      color: editPetForm.color.trim() || 'Sin especificar',
+      ageYears: editPetForm.ageYears !== '' ? Number(editPetForm.ageYears) : 1,
+      weightKg: editPetForm.weightKg !== '' ? Number(editPetForm.weightKg) : 0,
+      sex: editPetForm.sex || 'Macho',
+      microchip: editPetForm.microchip.trim(),
+      allergies: editPetForm.allergies.trim() || 'Ninguna conocida',
+      ownerName: editPetForm.ownerName,
+      ownerPhone: editPetForm.ownerPhone,
+      ownerAddress: editPetForm.ownerAddress,
+      ownerEmail: editPetForm.ownerEmail
+    });
+    setIsEditPetModalOpen(false);
+  };
 
   const handleCreateVaccine = (e) => {
     e.preventDefault();
@@ -119,6 +178,16 @@ export function VaccinationPassport() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          {selectedPet && (
+            <button
+              type="button"
+              onClick={handleOpenEditPetModal}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 shadow-xs transition-all active:scale-95"
+            >
+              <Pencil className="w-3.5 h-3.5 text-rose-900" />
+              Editar Mascota
+            </button>
+          )}
           <button
             onClick={() => setIsVacModalOpen(true)}
             className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95"
@@ -254,8 +323,18 @@ export function VaccinationPassport() {
                   
                   {/* SUBSECTION 1: DATOS DE LA MASCOTA - PET DATA */}
                   <div className="space-y-2.5 border-b-2 border-slate-900 pb-4">
-                    <div className="font-black text-xs uppercase tracking-wider text-slate-900">
-                      DATOS DE LA MASCOTA - PET DATA
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-black text-xs uppercase tracking-wider text-slate-900">
+                        DATOS DE LA MASCOTA - PET DATA
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleOpenEditPetModal}
+                        className="no-print inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-[11px] border border-amber-300 transition-colors cursor-pointer"
+                      >
+                        <Pencil className="w-3 h-3 text-rose-900" />
+                        Editar Datos
+                      </button>
                     </div>
 
                     {/* Nombre */}
@@ -720,6 +799,193 @@ export function VaccinationPassport() {
                   className="px-5 py-2 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-500 rounded-xl shadow-xs transition-all active:scale-95"
                 >
                   Asentar en Cartilla Oficial
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR DATOS DE LA MASCOTA DESDE CARTILLA */}
+      {isEditPetModalOpen && selectedPet && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 animate-slideUp max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-bold">
+                  <Pencil className="w-5 h-5 text-rose-900" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900">
+                    Editar Datos de {selectedPet.name}
+                  </h3>
+                  <p className="text-xs text-slate-500">Se actualiza en la Cartilla Oficial y en el Expediente</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditPetModalOpen(false)}
+                aria-label="Cerrar ventana"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePetEdit} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Nombre de la Mascota *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editPetForm.petName}
+                    onChange={(e) => setEditPetForm(prev => ({ ...prev, petName: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-bold text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Especie</label>
+                  <select
+                    value={editPetForm.species}
+                    onChange={(e) => setEditPetForm(prev => ({ ...prev, species: e.target.value }))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+                  >
+                    <option value="Canino">Canino (Perro)</option>
+                    <option value="Felino">Felino (Gato)</option>
+                    <option value="Ave">Ave</option>
+                    <option value="Otro">Otro</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Raza</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Mestizo, Golden..."
+                    value={editPetForm.breed}
+                    onChange={(e) => setEditPetForm(prev => ({ ...prev, breed: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Color</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Café con blanco"
+                    value={editPetForm.color}
+                    onChange={(e) => setEditPetForm(prev => ({ ...prev, color: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Edad (Años)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={editPetForm.ageYears}
+                    onChange={(e) => setEditPetForm(prev => ({ ...prev, ageYears: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Peso (kg)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={editPetForm.weightKg}
+                    onChange={(e) => setEditPetForm(prev => ({ ...prev, weightKg: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Sexo</label>
+                  <select
+                    value={editPetForm.sex}
+                    onChange={(e) => setEditPetForm(prev => ({ ...prev, sex: e.target.value }))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+                  >
+                    <option value="Macho">Macho</option>
+                    <option value="Hembra">Hembra</option>
+                    <option value="Macho (Castrado)">Macho (Castrado)</option>
+                    <option value="Hembra (Esterilizada)">Hembra (Esterilizada)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Microchip (Cruce Fronterizo CBP)</label>
+                <input
+                  type="text"
+                  placeholder="Ej. 985141..."
+                  value={editPetForm.microchip}
+                  onChange={(e) => setEditPetForm(prev => ({ ...prev, microchip: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono"
+                />
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <div className="font-bold text-slate-700 uppercase text-[10px]">Datos del Propietario</div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block font-semibold text-slate-600 mb-1">Nombre del Dueño</label>
+                    <input
+                      type="text"
+                      value={editPetForm.ownerName}
+                      onChange={(e) => setEditPetForm(prev => ({ ...prev, ownerName: e.target.value }))}
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-600 mb-1">Teléfono</label>
+                    <input
+                      type="tel"
+                      value={editPetForm.ownerPhone}
+                      onChange={(e) => setEditPetForm(prev => ({ ...prev, ownerPhone: e.target.value }))}
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block font-semibold text-slate-600 mb-1">Dirección</label>
+                    <input
+                      type="text"
+                      value={editPetForm.ownerAddress}
+                      onChange={(e) => setEditPetForm(prev => ({ ...prev, ownerAddress: e.target.value }))}
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-600 mb-1">Correo Electrónico</label>
+                    <input
+                      type="email"
+                      value={editPetForm.ownerEmail}
+                      onChange={(e) => setEditPetForm(prev => ({ ...prev, ownerEmail: e.target.value }))}
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEditPetModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-500 rounded-xl shadow-xs transition-all active:scale-95"
+                >
+                  Guardar Cambios
                 </button>
               </div>
             </form>

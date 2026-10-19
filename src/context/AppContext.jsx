@@ -212,11 +212,78 @@ export function AppProvider({ children }) {
   };
 
   const updatePet = (petId, fields) => {
-    setData(prev => ({
-      ...prev,
-      pets: prev.pets.map(p => p.id === petId ? { ...p, ...fields } : p)
-    }));
-    showToast('Datos de la mascota actualizados');
+    setData(prev => {
+      const targetPet = prev.pets.find(p => p.id === petId);
+      if (!targetPet) return prev;
+
+      const {
+        ownerName,
+        ownerPhone,
+        ownerAddress,
+        ownerEmail,
+        petName,
+        ...petFields
+      } = fields;
+
+      const resolvedName = (petName !== undefined ? petName : petFields.name ?? targetPet.name).trim();
+      const updatedPetObj = {
+        ...targetPet,
+        ...petFields,
+        name: resolvedName,
+        ...(petFields.ageYears !== undefined && petFields.ageYears !== '' ? { ageYears: Number(petFields.ageYears) } : {}),
+        ...(petFields.weightKg !== undefined && petFields.weightKg !== '' ? { weightKg: Number(petFields.weightKg) } : {})
+      };
+
+      let updatedClients = prev.clients;
+      if (ownerName !== undefined || ownerPhone !== undefined || ownerAddress !== undefined || ownerEmail !== undefined) {
+        const cleanPhone = (ownerPhone ?? '').trim();
+        const cleanNumbers = cleanPhone.replace(/\D/g, '');
+        if (targetPet.clientId && prev.clients.some(c => c.id === targetPet.clientId)) {
+          updatedClients = prev.clients.map(c => {
+            if (c.id !== targetPet.clientId) return c;
+            const nextPhone = cleanPhone || c.phone;
+            const nextDigits = nextPhone.replace(/\D/g, '');
+            return {
+              ...c,
+              ...(ownerName?.trim() ? { name: ownerName.trim() } : {}),
+              ...(cleanPhone ? {
+                phone: cleanPhone,
+                whatsapp: nextDigits ? (nextDigits.startsWith('52') ? nextDigits : `521${nextDigits}`) : c.whatsapp
+              } : {}),
+              ...(ownerAddress !== undefined ? { address: ownerAddress.trim() } : {}),
+              ...(ownerEmail !== undefined ? { email: ownerEmail.trim() } : {})
+            };
+          });
+        } else if (ownerName?.trim() || cleanPhone) {
+          const newClient = {
+            id: `cli-${Date.now()}`,
+            name: (ownerName || 'Propietario').trim(),
+            phone: cleanPhone,
+            whatsapp: cleanNumbers ? (cleanNumbers.startsWith('52') ? cleanNumbers : `521${cleanNumbers}`) : '',
+            email: (ownerEmail || '').trim(),
+            address: (ownerAddress || '').trim(),
+            isFrequent: false,
+            tag: 'Cliente Regular',
+            notes: ''
+          };
+          updatedClients = [newClient, ...prev.clients];
+          updatedPetObj.clientId = newClient.id;
+        }
+      }
+
+      const nameChanged = resolvedName && resolvedName !== targetPet.name;
+      const updatedVaccinations = nameChanged
+        ? (prev.vaccinations || []).map(v => v.petId === petId ? { ...v, petName: resolvedName } : v)
+        : prev.vaccinations;
+
+      return {
+        ...prev,
+        clients: updatedClients,
+        pets: prev.pets.map(p => p.id === petId ? updatedPetObj : p),
+        vaccinations: updatedVaccinations
+      };
+    });
+    showToast('Datos de la mascota actualizados con éxito');
   };
 
   const addClinicalNote = (petId, note) => {
