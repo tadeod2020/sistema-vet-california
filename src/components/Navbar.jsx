@@ -53,13 +53,13 @@ export function Navbar() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <a 
-            href="https://wa.me/5216643949984" 
+            href="https://wa.me/5216634359988" 
             target="_blank" 
             rel="noopener noreferrer"
             className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-slate-900 px-2 py-0.5 rounded-md transition-colors text-[10px] sm:text-xs font-bold"
           >
             <MessageCircle className="w-3 h-3 text-emerald-800 shrink-0" />
-            <span className="hidden sm:inline">WhatsApp: (664) 394-9984</span>
+            <span className="hidden sm:inline">WhatsApp: (663) 435-9988</span>
             <span className="sm:hidden">WhatsApp</span>
           </a>
         </div>

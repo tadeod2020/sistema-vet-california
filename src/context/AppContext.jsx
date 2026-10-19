@@ -44,7 +44,8 @@ export function AppProvider({ children }) {
           return {
             ...p,
             photoUrl: p.photoUrl || initP?.photoUrl || '',
-            clinicalNotes: p.clinicalNotes || initP?.clinicalNotes || []
+            clinicalNotes: p.clinicalNotes || initP?.clinicalNotes || [],
+            labResults: p.labResults || initP?.labResults || []
           };
         });
         return {
@@ -225,6 +226,52 @@ export function AppProvider({ children }) {
 
     showToast('Nota médica agregada al expediente');
     return newNote;
+  };
+
+  const addLabResult = (petId, result) => {
+    const newResult = {
+      id: `lab-${Date.now()}`,
+      date: result.date || new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }),
+      title: result.title || 'Resultado de Laboratorio',
+      category: result.category || 'Análisis Clínico',
+      fileType: result.fileType || 'image', // 'image' | 'pdf'
+      fileUrl: result.fileUrl || '',
+      fileName: result.fileName || 'estudio_laboratorio',
+      notes: result.notes || '',
+      performedBy: result.performedBy || 'Laboratorio Clínico California'
+    };
+
+    setData(prev => ({
+      ...prev,
+      pets: prev.pets.map(p => {
+        if (p.id === petId) {
+          return {
+            ...p,
+            labResults: [newResult, ...(p.labResults || [])]
+          };
+        }
+        return p;
+      })
+    }));
+
+    showToast('Estudio de laboratorio adjuntado al expediente');
+    return newResult;
+  };
+
+  const deleteLabResult = (petId, resultId) => {
+    setData(prev => ({
+      ...prev,
+      pets: prev.pets.map(p => {
+        if (p.id === petId) {
+          return {
+            ...p,
+            labResults: (p.labResults || []).filter(item => item.id !== resultId)
+          };
+        }
+        return p;
+      })
+    }));
+    showToast('Estudio eliminado del expediente', 'info');
   };
 
   const openPetPassport = (petId) => {
@@ -513,6 +560,8 @@ export function AppProvider({ children }) {
         addPet,
         updatePet,
         addClinicalNote,
+        addLabResult,
+        deleteLabResult,
         registerPetDirect,
         selectedPetIdForPassport,
         setSelectedPetIdForPassport,

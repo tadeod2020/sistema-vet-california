@@ -28,9 +28,8 @@ const CLINIC_SERVICES = [
   "Salud Dental", "Vacunaciones",
   "Medicina Preventiva", "Análisis Clínicos",
   "Programas Antiparasitarios", "Cirugías",
-  "Estética Canina y Felina", "Radiológia",
-  "Reproducción Asistida", "Hospitalización",
-  "Ecografías"
+  "Radiológia", "Reproducción Asistida",
+  "Hospitalización", "Ecografías"
 ];
 
 export function VaccinationPassport() {
@@ -217,17 +216,14 @@ export function VaccinationPassport() {
                       <span className="text-amber-600">🐾</span> Programas Antiparasitarios
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-amber-600">🐾</span> Estética Canina y Felina
+                      <span className="text-amber-600">🐾</span> Reproducción Asistida
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-amber-600">🐾</span> Reproducción Asistida
+                      <span className="text-amber-600">🐾</span> Consultas
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-amber-600">🐾</span> Consultas
-                    </div>
                     <div className="flex items-center gap-2">
                       <span className="text-amber-600">🐾</span> Vacunaciones
                     </div>
@@ -576,7 +572,7 @@ export function VaccinationPassport() {
                 <div className="font-extrabold text-sm text-[#7A1416]">Zona Centro, Tijuana, B.C.</div>
                 <div className="pt-1">Tel. (664) 685-8512</div>
                 <div className="font-extrabold flex items-center justify-center gap-1 text-slate-900">
-                  <span>WhatsApp: (664) 394-9984</span>
+                  <span>WhatsApp: (663) 435-9988</span>
                 </div>
               </div>
 
