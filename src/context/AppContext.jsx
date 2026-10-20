@@ -718,7 +718,11 @@ export function AppProvider({ children }) {
           prev.pets.find(p => newSurgery.patientName?.toLowerCase().startsWith(p.name.toLowerCase()));
 
         if (matchedPet) {
-          const vaccineKeywords = ['vacuna', 'rabia', 'rabies', 'séxtuple', 'sextuple', 'bordetella', 'puppy', 'triple felina', 'desparasit'];
+          const vaccineKeywords = [
+            'vacuna', 'rabia', 'rabies', 'defensor', 'vanguard', 'bronchicine',
+            'purevax', 'nobivac', 'séxtuple', 'sextuple', 'bordetella', 'puppy',
+            'felina', 'feline', 'leucemia', 'desparasit'
+          ];
           const vaccineProcs = cleanAdditional.filter(proc =>
             vaccineKeywords.some(kw => proc.toLowerCase().includes(kw))
           );
@@ -729,21 +733,33 @@ export function AppProvider({ children }) {
             dueDateObj.setFullYear(dueDateObj.getFullYear() + 1);
             const dueDate = dueDateObj.toISOString().split('T')[0];
 
-            const newVacRecords = vaccineProcs.map((vacName, idx) => ({
-              id: `vac-${Date.now()}-${idx}`,
-              petId: matchedPet.id,
-              petName: matchedPet.name,
-              ownerName: created.ownerName || 'Cliente Registrado',
-              vaccineName: vacName.replace(/^[^\wÁÉÍÓÚáéíóúÑñ]+/, '').trim(),
-              manufacturer: 'Aplicada en Quirófano / Cirugía',
-              lotNumber: `QUIR-${new Date().getFullYear()}`,
-              appliedDate,
-              dueDate,
-              vetName: created.surgeon || 'Dra. María José Mendoza Gutiérrez',
-              licenseNumber: 'CÉD. PROF. 8492019-BC',
-              notes: `Aplicada durante cirugía: ${created.procedure}`,
-              isTravelValid: true
-            }));
+            const resolveManufacturer = (name) => {
+              const lower = name.toLowerCase();
+              if (lower.includes('defensor') || lower.includes('vanguard') || lower.includes('bronchicine')) return 'Zoetis';
+              if (lower.includes('purevax')) return 'Boehringer Ingelheim';
+              if (lower.includes('nobivac') || lower.includes('bravecto')) return 'MSD Salud Animal';
+              if (lower.includes('endovet')) return 'Riverfarma';
+              return 'Aplicada en Quirófano / Cirugía';
+            };
+
+            const newVacRecords = vaccineProcs.map((vacName, idx) => {
+              const cleanName = vacName.replace(/^[^\wÁÉÍÓÚáéíóúÑñ]+/, '').trim();
+              return {
+                id: `vac-${Date.now()}-${idx}`,
+                petId: matchedPet.id,
+                petName: matchedPet.name,
+                ownerName: created.ownerName || 'Cliente Registrado',
+                vaccineName: cleanName,
+                manufacturer: resolveManufacturer(cleanName),
+                lotNumber: `QUIR-${new Date().getFullYear()}`,
+                appliedDate,
+                dueDate,
+                vetName: created.surgeon || 'Dra. María José Mendoza Gutiérrez',
+                licenseNumber: 'CÉD. PROF. 8492019-BC',
+                notes: `Aplicada durante cirugía: ${created.procedure}`,
+                isTravelValid: true
+              };
+            });
 
             nextVaccinations = [...newVacRecords, ...nextVaccinations];
           }

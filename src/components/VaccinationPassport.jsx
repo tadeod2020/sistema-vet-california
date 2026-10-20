@@ -33,6 +33,63 @@ const CLINIC_SERVICES = [
   "Hospitalización", "Ecografías"
 ];
 
+const OFFICIAL_VACCINES = [
+  {
+    value: 'Defensor 1 (Vacuna contra la Rabia)',
+    label: 'Defensor 1 — Vacuna contra la Rabia (Perros, Gatos y Hurones)',
+    manufacturer: 'Zoetis (Defensor 1)',
+    defaultLot: 'DEF1-2026-TJ'
+  },
+  {
+    value: 'Vanguard Plus 5 (Distemper, Adenovirus 2, Parainfluenza, Parvovirus)',
+    label: 'Vanguard Plus 5 — Distemper, Adenovirus 2, Parainfluenza y Parvovirus',
+    manufacturer: 'Zoetis (Vanguard Plus 5)',
+    defaultLot: 'VAN5-2026-TJ'
+  },
+  {
+    value: 'Vanguard Plus 5/CV-L (DAPPi + Coronavirus + Leptospira)',
+    label: 'Vanguard Plus 5/CV-L — Distemper, Adenovirus 2, Coronavirus, Parainfluenza, Parvovirus + Leptospira',
+    manufacturer: 'Zoetis (Vanguard Plus 5/CV-L)',
+    defaultLot: 'VAN5CVL-2026-TJ'
+  },
+  {
+    value: 'Vanguard Plus 5 L4 CV (DAPPi + Coronavirus + Leptospira L4)',
+    label: 'Vanguard Plus 5 L4 CV — DAPPi + Coronavirus + Leptospira (4 Serovares)',
+    manufacturer: 'Zoetis (Vanguard Plus 5 L4 CV)',
+    defaultLot: 'VAN5L4-2026-TJ'
+  },
+  {
+    value: 'Bronchicine CAe (Bordetella / Traqueobronquitis Infecciosa Canina)',
+    label: 'Bronchicine CAe — Traqueobronquitis Infecciosa Canina (Bordetella)',
+    manufacturer: 'Zoetis (Bronchicine CAe)',
+    defaultLot: 'BRON-2026-TJ'
+  },
+  {
+    value: 'PUREVAX Feline 4 (Rinotraqueítis, Calicivirosis, Panleucopenia y Clamidiasis)',
+    label: 'PUREVAX Feline 4 — Rinotraqueítis, Calicivirosis, Panleucopenia y Clamidiasis Felina',
+    manufacturer: 'Boehringer Ingelheim (PUREVAX Feline 4)',
+    defaultLot: 'PVAX4-2026-TJ'
+  },
+  {
+    value: 'Nobivac Feline 1-HCP + FeLV (Triple Felina + Leucemia)',
+    label: 'Nobivac Feline 1-HCP + FeLV — Leucemia, Rinotraqueítis, Calicivirus y Panleucopenia Felina',
+    manufacturer: 'MSD Salud Animal (Nobivac Feline 1-HCP + FeLV)',
+    defaultLot: 'NOBFELV-2026-TJ'
+  },
+  {
+    value: 'Desparasitación Interna (Endovet)',
+    label: 'Desparasitación Interna (Endovet)',
+    manufacturer: 'Riverfarma (Endovet)',
+    defaultLot: 'ENDO-2026-TJ'
+  },
+  {
+    value: 'Desparasitación Externa (Bravecto / Pipeta)',
+    label: 'Desparasitación Externa (Bravecto / Pipeta)',
+    manufacturer: 'MSD Salud Animal (Bravecto)',
+    defaultLot: 'BRAV-2026-TJ'
+  }
+];
+
 export function VaccinationPassport() {
   const { pets, clients, vaccinations, addVaccination, selectedPetIdForPassport, updatePet } = useApp();
 
@@ -50,9 +107,9 @@ export function VaccinationPassport() {
 
   // Form State
   const [vacForm, setVacForm] = useState({
-    vaccineName: 'Vacuna Antirrábica (Rabies)',
-    manufacturer: 'Nobivac Rabies',
-    lotNumber: 'RAB-2026-TJ',
+    vaccineName: OFFICIAL_VACCINES[0].value,
+    manufacturer: OFFICIAL_VACCINES[0].manufacturer,
+    lotNumber: OFFICIAL_VACCINES[0].defaultLot,
     appliedDate: new Date().toISOString().split('T')[0],
     dueDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
     vetName: 'Dra. María José Mendoza Gutiérrez',
@@ -709,16 +766,23 @@ export function VaccinationPassport() {
                 <label className="block text-xs font-bold text-slate-700 mb-1">Biológico / Vacuna *</label>
                 <select
                   value={vacForm.vaccineName}
-                  onChange={(e) => setVacForm(prev => ({ ...prev, vaccineName: e.target.value }))}
+                  onChange={(e) => {
+                    const selectedVal = e.target.value;
+                    const found = OFFICIAL_VACCINES.find(v => v.value === selectedVal);
+                    setVacForm(prev => ({
+                      ...prev,
+                      vaccineName: selectedVal,
+                      manufacturer: found ? found.manufacturer : prev.manufacturer,
+                      lotNumber: found ? found.defaultLot : prev.lotNumber
+                    }));
+                  }}
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
                 >
-                  <option value="Vacuna Antirrábica (Rabies)">Vacuna Antirrábica (Rabies)</option>
-                  <option value="Múltiple Canina Séxtuple (DHPPi+L)">Múltiple Canina Séxtuple (DHPPi+L)</option>
-                  <option value="Bordetella Bronchiseptica (Tos de Perreras)">Bordetella Bronchiseptica</option>
-                  <option value="Puppy DP (Parvovirus y Distemper)">Puppy DP (Parvovirus y Distemper)</option>
-                  <option value="Triple Felina (FVRCP)">Triple Felina (FVRCP)</option>
-                  <option value="Desparasitación Interna (Endovet)">Desparasitación Interna (Endovet)</option>
-                  <option value="Desparasitación Externa (Bravecto / Pipeta)">Desparasitación Externa (Bravecto / Pipeta)</option>
+                  {OFFICIAL_VACCINES.map((vac) => (
+                    <option key={vac.value} value={vac.value}>
+                      {vac.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 

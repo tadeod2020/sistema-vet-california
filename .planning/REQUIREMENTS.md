@@ -31,7 +31,15 @@
 - Estatus: Programada, En Quirófano, En Recuperación, Alta Médica.
 
 ### RF-06: Cartilla de Vacunación & "Passport to Travel"
-- Registro de vacunas: Rabia, Múltiple Canina (Séxtuple), Puppy, Bordetella, Desparasitaciones internas y externas.
+- Registro del catálogo oficial de biológicos de Servicio Veterinario California:
+  - **Defensor 1** (Zoetis — Vacuna contra la Rabia)
+  - **Vanguard Plus 5** (Zoetis — Distemper, Adenovirus 2, Parainfluenza y Parvovirus)
+  - **Vanguard Plus 5/CV-L** (Zoetis — DAPPi + Coronavirus + Leptospira)
+  - **Vanguard Plus 5 L4 CV** (Zoetis — DAPPi + Coronavirus + Leptospira 4 Serovares)
+  - **Bronchicine CAe** (Zoetis — Traqueobronquitis Infecciosa Canina / Bordetella)
+  - **PUREVAX Feline 4** (Boehringer Ingelheim — Rinotraqueítis, Calicivirosis, Panleucopenia y Clamidiasis Felina)
+  - **Nobivac Feline 1-HCP + FeLV** (MSD Salud Animal — Leucemia, Rinotraqueítis, Calicivirus y Panleucopenia Felina)
+  - Desparasitaciones internas (Endovet) y externas (Bravecto / Pipeta).
 - Vista de Certificado Oficial Bilingüe ("Passport to Travel") con diseño idéntico al carnet físico amarillo de Servicio Veterinario California (Tijuana-California), listo para imprimir o guardar.
 
 ## Requisitos No Funcionales (RNF)

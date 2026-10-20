@@ -17,11 +17,13 @@ import {
 } from 'lucide-react';
 
 const COMPLEMENTARY_PROCEDURES = [
-  { label: 'Vacuna Antirrábica (Rabies)', category: 'vacuna' },
-  { label: 'Múltiple Canina Séxtuple (DHPPi+L)', category: 'vacuna' },
-  { label: 'Bordetella Bronchiseptica (Tos de Perreras)', category: 'vacuna' },
-  { label: 'Puppy DP (Parvovirus y Distemper)', category: 'vacuna' },
-  { label: 'Triple Felina (FVRCP)', category: 'vacuna' },
+  { label: 'Defensor 1 (Vacuna contra la Rabia)', category: 'vacuna' },
+  { label: 'Vanguard Plus 5 (Distemper, Adenovirus 2, Parainfluenza, Parvovirus)', category: 'vacuna' },
+  { label: 'Vanguard Plus 5/CV-L (DAPPi + Coronavirus + Leptospira)', category: 'vacuna' },
+  { label: 'Vanguard Plus 5 L4 CV (DAPPi + Coronavirus + Leptospira L4)', category: 'vacuna' },
+  { label: 'Bronchicine CAe (Bordetella / Traqueobronquitis Infecciosa Canina)', category: 'vacuna' },
+  { label: 'PUREVAX Feline 4 (Rinotraqueítis, Calicivirosis, Panleucopenia y Clamidiasis)', category: 'vacuna' },
+  { label: 'Nobivac Feline 1-HCP + FeLV (Triple Felina + Leucemia)', category: 'vacuna' },
   { label: 'Desparasitación Interna (Endovet)', category: 'preventivo' },
   { label: 'Desparasitación Externa (Bravecto / Pipeta)', category: 'preventivo' },
   { label: 'Implantación de Microchip ISO', category: 'procedimiento' },

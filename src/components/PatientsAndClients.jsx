@@ -1976,7 +1976,7 @@ export function PatientsAndClients() {
                         <FileText className="w-8 h-8 text-slate-400 mx-auto" />
                         <div className="font-bold text-xs text-slate-700">Sin vacunas registradas en el sistema</div>
                         <p className="text-[11px] text-slate-500">
-                          Puedes registrar vacunas oficiales (Rabia, Séxtuple, Bordetella) desde la sección de Cartilla Oficial.
+                          Puedes registrar vacunas oficiales (Defensor 1, Vanguard Plus 5, Bronchicine CAe, PUREVAX Feline 4, Nobivac Feline 1-HCP + FeLV) desde la sección de Cartilla Oficial.
                         </p>
                         <button
                           onClick={() => {
