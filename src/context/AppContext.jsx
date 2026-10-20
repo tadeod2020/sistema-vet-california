@@ -11,26 +11,42 @@ import {
   normalizeAndDeduplicateCages,
   normalizeAndDeduplicateRescues,
   createRealtimeSyncChannel,
-  broadcastSync
+  broadcastSync,
+  isTestRecord
 } from '../lib/supabase';
 
 export { formatPetAge };
 
 const AppContext = createContext();
 
-const STORAGE_KEY = 'vet_california_system_v2_clean';
+const STORAGE_KEY = 'vet_california_system_v5_clean';
 const AUTH_STORAGE_KEY = 'vet_california_auth_session_v3';
 
 function safeSaveLocalStorage(key, stateObj) {
   try {
-    localStorage.setItem(key, JSON.stringify(stateObj));
+    const sanitized = {
+      ...stateObj,
+      clients: (stateObj.clients || []).filter(c => !isTestRecord(c)),
+      pets: (stateObj.pets || []).filter(p => !isTestRecord(p)),
+      appointments: (stateObj.appointments || []).filter(a => !isTestRecord(a)),
+      surgeries: (stateObj.surgeries || []).filter(s => !isTestRecord(s)),
+      vaccinations: (stateObj.vaccinations || []).filter(v => !isTestRecord(v)),
+      rescues: (stateObj.rescues || []).filter(r => !isTestRecord(r)),
+      cages: stateObj.cages || []
+    };
+    localStorage.setItem(key, JSON.stringify(sanitized));
   } catch (err) {
     console.warn('LocalStorage excedió límite de cuota. Optimizando espacio para mantener datos críticos...');
     try {
       // Elimina fotos pesadas (>40KB) del respaldo local ya que están respaldadas en la nube
       const pruned = {
         ...stateObj,
-        pets: (stateObj.pets || []).map(p => ({
+        clients: (stateObj.clients || []).filter(c => !isTestRecord(c)),
+        appointments: (stateObj.appointments || []).filter(a => !isTestRecord(a)),
+        surgeries: (stateObj.surgeries || []).filter(s => !isTestRecord(s)),
+        vaccinations: (stateObj.vaccinations || []).filter(v => !isTestRecord(v)),
+        rescues: (stateObj.rescues || []).filter(r => !isTestRecord(r)),
+        pets: (stateObj.pets || []).filter(p => !isTestRecord(p)).map(p => ({
           ...p,
           photoUrl: p.photoUrl && p.photoUrl.length > 40000 ? '' : p.photoUrl,
           labResults: (p.labResults || []).map(l => ({
@@ -47,15 +63,15 @@ function safeSaveLocalStorage(key, stateObj) {
 }
 
 function reconcileCollection(localArr = [], cloudArr = []) {
-  if (!cloudArr) return localArr || [];
+  if (!cloudArr) return (localArr || []).filter(item => !isTestRecord(item));
   const map = new Map();
   cloudArr.forEach(item => {
-    if (item && item.id) map.set(item.id, item);
+    if (item && item.id && !isTestRecord(item)) map.set(item.id, item);
   });
 
-  // Si hubo registros creados localmente mientras no había internet (offline), preservarlos
+  // Si hubo registros creados localmente mientras no había internet (offline), preservarlos siempre que no sean de prueba
   (localArr || []).forEach(localItem => {
-    if (localItem && localItem.id && localItem._pendingSync) {
+    if (localItem && localItem.id && localItem._pendingSync && !isTestRecord(localItem)) {
       if (!map.has(localItem.id)) {
         map.set(localItem.id, localItem);
       } else {
@@ -106,18 +122,23 @@ export function AppProvider({ children }) {
 
   const [data, setData] = useState(() => {
     try {
+      // Limpiar versiones anteriores del almacenamiento local que pudieran contener datos de prueba
+      ['vet_california_system_v1', 'vet_california_system_v2_clean', 'vet_california_system_v3_clean', 'vet_california_system_v4_clean'].forEach(k => {
+        try { localStorage.removeItem(k); } catch (e) {}
+      });
+
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         return {
           ...INITIAL_DATA,
           ...parsed,
-          pets: parsed.pets || [],
-          clients: parsed.clients || [],
-          appointments: parsed.appointments || [],
-          rescues: normalizeAndDeduplicateRescues(parsed.rescues || []),
-          surgeries: parsed.surgeries || [],
-          vaccinations: parsed.vaccinations || [],
+          pets: (parsed.pets || []).filter(p => !isTestRecord(p)),
+          clients: (parsed.clients || []).filter(c => !isTestRecord(c)),
+          appointments: (parsed.appointments || []).filter(a => !isTestRecord(a)),
+          rescues: normalizeAndDeduplicateRescues((parsed.rescues || []).filter(r => !isTestRecord(r))),
+          surgeries: (parsed.surgeries || []).filter(s => !isTestRecord(s)),
+          vaccinations: (parsed.vaccinations || []).filter(v => !isTestRecord(v)),
           cages: normalizeAndDeduplicateCages(
             parsed.cages && parsed.cages.length > 0 ? parsed.cages : INITIAL_DATA.cages
           )
@@ -307,7 +328,18 @@ export function AppProvider({ children }) {
     setCloudStatus('syncing');
 
     try {
-      const res = await syncAllToSupabase(dataToSync);
+      const cleanData = {
+        ...dataToSync,
+        clients: (dataToSync.clients || []).filter(c => !isTestRecord(c)),
+        pets: (dataToSync.pets || []).filter(p => !isTestRecord(p)),
+        appointments: (dataToSync.appointments || []).filter(a => !isTestRecord(a)),
+        surgeries: (dataToSync.surgeries || []).filter(s => !isTestRecord(s)),
+        vaccinations: (dataToSync.vaccinations || []).filter(v => !isTestRecord(v)),
+        rescues: (dataToSync.rescues || []).filter(r => !isTestRecord(r)),
+        cages: dataToSync.cages || []
+      };
+
+      const res = await syncAllToSupabase(cleanData);
       if (res.success) {
         const timeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
         setCloudStatus('synced');

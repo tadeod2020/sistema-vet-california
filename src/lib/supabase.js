@@ -13,6 +13,61 @@ export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey) 
   : null;
 
+// ============================================================================
+// FILTRO DE SEGURIDAD ESTRICTO: DATOS DE PRUEBA VS DATOS REALES DE LA CLÍNICA
+// ============================================================================
+export const TEST_CLIENT_IDS = new Set(['cli-1', 'cli-2', 'cli-3', 'cli-4']);
+export const TEST_PET_IDS = new Set(['pet-1', 'pet-2', 'pet-3', 'pet-4', 'pet-5']);
+export const TEST_APT_IDS = new Set(['apt-1', 'apt-2', 'apt-3', 'apt-4', 'apt-5']);
+export const TEST_SURG_IDS = new Set(['surg-1', 'surg-2', 'surg-3']);
+export const TEST_VAC_IDS = new Set(['vac-1', 'vac-2', 'vac-3', 'vac-4']);
+export const TEST_RESCUE_IDS = new Set(['resc-1', 'resc-2']);
+
+export const TEST_OWNERS = [
+  'carmen villalobos',
+  'carlos mendoza',
+  'elena ortiz',
+  'marcos sandoval',
+  'refugio zona centro'
+];
+
+export const TEST_DOCTORS = [
+  'mario estrada',
+  'sofía rincón',
+  'sofia rincon',
+  'sofía valenzuela',
+  'sofia valenzuela',
+  'médico veterinario de guardia',
+  'medico veterinario de guardia'
+];
+
+export function isTestRecord(item) {
+  if (!item) return false;
+  const id = String(item.id || '');
+  if (
+    TEST_CLIENT_IDS.has(id) ||
+    TEST_PET_IDS.has(id) ||
+    TEST_APT_IDS.has(id) ||
+    TEST_SURG_IDS.has(id) ||
+    TEST_VAC_IDS.has(id) ||
+    TEST_RESCUE_IDS.has(id)
+  ) {
+    return true;
+  }
+
+  const owner = String(
+    item.name || item.clientName || item.ownerName || item.client_name || item.owner_name || ''
+  ).toLowerCase();
+  if (TEST_OWNERS.some(t => owner.includes(t))) return true;
+
+  const vet = String(
+    item.assignedVet || item.surgeon || item.vetName || item.vet_name || item.vet_in_charge || ''
+  ).toLowerCase();
+  if (TEST_DOCTORS.some(d => vet.includes(d))) return true;
+
+  return false;
+}
+
 const META_PREFIX = '__VET_META__:';
 
 function encodeMeta(humanText, metaObj) {
@@ -523,13 +578,13 @@ export async function fetchAllFromSupabase() {
   }
 
   return {
-    clients: (clientsRes.data || []).map(rowToClient),
-    pets: (petsRes.data || []).map(rowToPet),
-    appointments: (aptsRes.data || []).map(rowToAppointment),
+    clients: (clientsRes.data || []).map(rowToClient).filter(c => !isTestRecord(c)),
+    pets: (petsRes.data || []).map(rowToPet).filter(p => !isTestRecord(p)),
+    appointments: (aptsRes.data || []).map(rowToAppointment).filter(a => !isTestRecord(a)),
     cages: (cagesRes.data || []).map(rowToCage),
-    rescues: (rescuesRes.data || []).map(rowToRescue),
-    surgeries: (surgeriesRes.data || []).map(rowToSurgery),
-    vaccinations: (vacsRes.data || []).map(rowToVaccination)
+    rescues: (rescuesRes.data || []).map(rowToRescue).filter(r => !isTestRecord(r)),
+    surgeries: (surgeriesRes.data || []).map(rowToSurgery).filter(s => !isTestRecord(s)),
+    vaccinations: (vacsRes.data || []).map(rowToVaccination).filter(v => !isTestRecord(v))
   };
 }
 
@@ -537,13 +592,14 @@ export async function syncAllToSupabase(data) {
   if (!supabase || !data) return { success: false, error: 'Supabase no configurado' };
 
   const syncPromise = (async () => {
-    const clients = data.clients || [];
-    const pets = data.pets || [];
-    const appointments = data.appointments || [];
+    // FILTRO ESTRICTO: Nunca permitir que datos de prueba lleguen a Supabase
+    const clients = (data.clients || []).filter(c => !isTestRecord(c));
+    const pets = (data.pets || []).filter(p => !isTestRecord(p));
+    const appointments = (data.appointments || []).filter(a => !isTestRecord(a));
     const cages = normalizeAndDeduplicateCages(data.cages || []);
-    const rescues = normalizeAndDeduplicateRescues(data.rescues || []);
-    const surgeries = data.surgeries || [];
-    const vaccinations = data.vaccinations || [];
+    const rescues = normalizeAndDeduplicateRescues((data.rescues || []).filter(r => !isTestRecord(r)));
+    const surgeries = (data.surgeries || []).filter(s => !isTestRecord(s));
+    const vaccinations = (data.vaccinations || []).filter(v => !isTestRecord(v));
 
     const validClientIds = new Set(clients.map(c => c.id));
     const validPetIds = new Set(pets.map(p => p.id));
