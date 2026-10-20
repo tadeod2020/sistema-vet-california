@@ -331,7 +331,7 @@ export function Rescues() {
                 <textarea
                   required
                   rows={3}
-                  placeholder="Ej. Mestizo macho talla mediana, color canela con calcetines blancos, orejas dobladas, cicatriz en lomo, peso aprox 15kg..."
+                  placeholder="Ej. Mestizo macho talla mediana, color miel con calcetines blancos, orejas dobladas, cicatriz en lomo, peso aprox 15kg..."
                   value={rescueForm.physicalDescription}
                   onChange={(e) => setRescueForm(prev => ({ ...prev, physicalDescription: e.target.value }))}
                   className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"

@@ -841,7 +841,7 @@ export function PatientsAndClients() {
                   <input
                     type="text"
                     required
-                    placeholder="Ej. Roberto Garza o Carmen Villalobos"
+                    placeholder="Ej. Roberto Garza o Juan Pérez"
                     value={quickPetForm.ownerName}
                     onChange={(e) => setQuickPetForm(prev => ({ ...prev, ownerName: e.target.value }))}
                     className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none font-bold text-slate-900"
@@ -856,7 +856,7 @@ export function PatientsAndClients() {
                   <input
                     type="text"
                     required
-                    placeholder="Ej. Rocky, Canela, Thor..."
+                    placeholder="Ej. Max, Toby, Luna..."
                     value={quickPetForm.petName}
                     onChange={(e) => setQuickPetForm(prev => ({ ...prev, petName: e.target.value }))}
                     className="w-full px-3 py-2 text-sm bg-white border-2 border-amber-400 rounded-xl focus:ring-2 focus:ring-rose-900 focus:outline-none font-black text-rose-950 placeholder:font-normal"
@@ -1094,7 +1094,7 @@ export function PatientsAndClients() {
                 <input
                   type="text"
                   required
-                  placeholder="Ej. Roberto Garza o Sra. Carmen"
+                  placeholder="Ej. Roberto Garza o Juan Pérez"
                   value={clientForm.name}
                   onChange={(e) => setClientForm(prev => ({ ...prev, name: e.target.value }))}
                   className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"

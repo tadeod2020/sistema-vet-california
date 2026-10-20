@@ -36,10 +36,19 @@ export const TEST_DOCTORS = [
   'sofía rincón',
   'sofia rincon',
   'sofía valenzuela',
-  'sofia valenzuela',
-  'médico veterinario de guardia',
-  'medico veterinario de guardia'
+  'sofia valenzuela'
 ];
+
+export function isOfficialDoctor(doctorName) {
+  if (!doctorName) return true;
+  const d = String(doctorName).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return (
+    d.includes("maria jose") || d.includes("mendoza gutierrez") ||
+    d.includes("miguel angel") || d.includes("michel rea") ||
+    d.includes("ruben estrada") || d.includes("jose ruben") ||
+    d.includes("cesar wilfredo") || d.includes("solorzano")
+  );
+}
 
 export function isTestRecord(item) {
   if (!item) return false;
@@ -57,13 +66,27 @@ export function isTestRecord(item) {
 
   const owner = String(
     item.name || item.clientName || item.ownerName || item.client_name || item.owner_name || ''
-  ).toLowerCase();
+  ).toLowerCase().trim();
   if (TEST_OWNERS.some(t => owner.includes(t))) return true;
 
   const vet = String(
     item.assignedVet || item.surgeon || item.vetName || item.vet_name || item.vet_in_charge || ''
-  ).toLowerCase();
+  ).toLowerCase().trim();
   if (TEST_DOCTORS.some(d => vet.includes(d))) return true;
+
+  // Si tiene doctor asignado pero NO es ninguno de los 4 doctores oficiales de Servicio Veterinario California
+  if (vet && !isOfficialDoctor(vet)) {
+    return true;
+  }
+
+  const petName = String(item.petName || item.pet_name || item.name || '').toLowerCase().trim();
+  if (
+    (petName.includes('canela') && (owner.includes('carmen') || id === 'pet-1' || id === 'apt-2')) ||
+    (petName.includes('thor') && (owner.includes('mendoza') || id === 'pet-3' || id === 'apt-1')) ||
+    (petName.includes('perrito atropellado sin nombre') || id === 'apt-5')
+  ) {
+    return true;
+  }
 
   return false;
 }
@@ -160,15 +183,15 @@ export function petToRow(p, validClientIds = new Set()) {
     p.microchip ? `Chip: ${p.microchip}` : ''
   ].filter(Boolean).join(' | ');
 
-  // Evita payloads descomunales que hagan fallar la API de Supabase con error 413 o timeout
+  // Evita payloads descomunales que hagan fallar la API de Supabase con error 413 o TypeError: terminated
   let safePhotoUrl = p.photoUrl || '';
-  if (safePhotoUrl && safePhotoUrl.length > 95000) {
-    safePhotoUrl = safePhotoUrl.slice(0, 85000);
+  if (safePhotoUrl && safePhotoUrl.length > 120000) {
+    safePhotoUrl = '';
   }
 
   const safeLabResults = (Array.isArray(p.labResults) ? p.labResults : []).map(l => {
     let safeFile = l.fileUrl || '';
-    if (safeFile && safeFile.length > 180000) {
+    if (safeFile && safeFile.length > 120000) {
       safeFile = '';
     }
     return { ...l, fileUrl: safeFile };
@@ -577,14 +600,42 @@ export async function fetchAllFromSupabase() {
     throw new Error(errors.map(e => e.message).join('; '));
   }
 
+  const rawClients = clientsRes.data || [];
+  const rawPets = petsRes.data || [];
+  const rawApts = aptsRes.data || [];
+  const rawCages = cagesRes.data || [];
+  const rawRescues = rescuesRes.data || [];
+  const rawSurgeries = surgeriesRes.data || [];
+  const rawVaccinations = vacsRes.data || [];
+
+  // Purgado automático de seguridad en segundo plano si algún cliente antiguo subió datos de prueba
+  const testApts = rawApts.filter(isTestRecord);
+  const testPets = rawPets.filter(isTestRecord);
+  const testClients = rawClients.filter(isTestRecord);
+  const testSurgeries = rawSurgeries.filter(isTestRecord);
+  const testVaccinations = rawVaccinations.filter(isTestRecord);
+  const testRescues = rawRescues.filter(isTestRecord);
+
+  if (testApts.length > 0 || testPets.length > 0 || testClients.length > 0 || testSurgeries.length > 0 || testVaccinations.length > 0 || testRescues.length > 0) {
+    (async () => {
+      console.warn('🛡️ [Seguridad] Purgando datos de prueba detectados en Supabase...');
+      for (const a of testApts) await deleteRowFromSupabase('appointments', a.id);
+      for (const v of testVaccinations) await deleteRowFromSupabase('vaccinations', v.id);
+      for (const s of testSurgeries) await deleteRowFromSupabase('surgeries', s.id);
+      for (const r of testRescues) await deleteRowFromSupabase('rescues', r.id);
+      for (const p of testPets) await deleteRowFromSupabase('pets', p.id);
+      for (const c of testClients) await deleteRowFromSupabase('clients', c.id);
+    })().catch(() => {});
+  }
+
   return {
-    clients: (clientsRes.data || []).map(rowToClient).filter(c => !isTestRecord(c)),
-    pets: (petsRes.data || []).map(rowToPet).filter(p => !isTestRecord(p)),
-    appointments: (aptsRes.data || []).map(rowToAppointment).filter(a => !isTestRecord(a)),
-    cages: (cagesRes.data || []).map(rowToCage),
-    rescues: (rescuesRes.data || []).map(rowToRescue).filter(r => !isTestRecord(r)),
-    surgeries: (surgeriesRes.data || []).map(rowToSurgery).filter(s => !isTestRecord(s)),
-    vaccinations: (vacsRes.data || []).map(rowToVaccination).filter(v => !isTestRecord(v))
+    clients: rawClients.map(rowToClient).filter(c => !isTestRecord(c)),
+    pets: rawPets.map(rowToPet).filter(p => !isTestRecord(p)),
+    appointments: rawApts.map(rowToAppointment).filter(a => !isTestRecord(a)),
+    cages: rawCages.map(rowToCage),
+    rescues: rawRescues.map(rowToRescue).filter(r => !isTestRecord(r)),
+    surgeries: rawSurgeries.map(rowToSurgery).filter(s => !isTestRecord(s)),
+    vaccinations: rawVaccinations.map(rowToVaccination).filter(v => !isTestRecord(v))
   };
 }
 
@@ -757,10 +808,191 @@ export async function syncAllToSupabase(data) {
 }
 
 export async function deleteRowFromSupabase(table, id) {
-  if (!supabase || !id) return;
-  const { error } = await supabase.from(table).delete().eq('id', String(id));
-  if (error) {
-    console.error(`Error deleting from ${table}:`, error);
+  if (!supabase || !id) return { success: false, error: 'Parámetros no válidos' };
+  try {
+    const { error } = await supabase.from(table).delete().eq('id', String(id));
+    if (error) {
+      console.error(`Error deleting from ${table}:`, error);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error(`Excepción deleting from ${table}:`, err);
+    return { success: false, error: err.message };
+  }
+}
+
+// ============================================================================
+// OPERACIONES DIRECTAS CON COMPROBACIÓN INMEDIATA (INDIVIDUAL ROW MUTATIONS)
+// ============================================================================
+
+export async function saveAppointmentDirect(apt, validClientIds = new Set(), validPetIds = new Set()) {
+  if (!supabase) return { success: false, error: 'Supabase no configurado' };
+  if (!apt || isTestRecord(apt)) {
+    return { success: false, error: 'Registro de prueba descartado por seguridad' };
+  }
+  try {
+    const row = appointmentToRow(apt, validClientIds, validPetIds);
+    let { data, error } = await supabase.from('appointments').upsert(row, { onConflict: 'id' }).select();
+    if (error && error.code === '23503') {
+      row.client_id = null;
+      row.pet_id = null;
+      const retry = await supabase.from('appointments').upsert(row, { onConflict: 'id' }).select();
+      data = retry.data;
+      error = retry.error;
+    }
+    if (error) {
+      console.error('Error al guardar cita en Supabase:', error);
+      return { success: false, error: error.message };
+    }
+    const saved = data && data[0] ? rowToAppointment(data[0]) : apt;
+    return { success: true, data: saved };
+  } catch (err) {
+    console.error('Excepción al guardar cita:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function saveClientDirect(client) {
+  if (!supabase) return { success: false, error: 'Supabase no configurado' };
+  if (!client || isTestRecord(client)) {
+    return { success: false, error: 'Registro de prueba descartado por seguridad' };
+  }
+  try {
+    const row = clientToRow(client);
+    const { data, error } = await supabase.from('clients').upsert(row, { onConflict: 'id' }).select();
+    if (error) {
+      console.error('Error al guardar cliente en Supabase:', error);
+      return { success: false, error: error.message };
+    }
+    const saved = data && data[0] ? rowToClient(data[0]) : client;
+    return { success: true, data: saved };
+  } catch (err) {
+    console.error('Excepción al guardar cliente:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function savePetDirect(pet, validClientIds = new Set()) {
+  if (!supabase) return { success: false, error: 'Supabase no configurado' };
+  if (!pet || isTestRecord(pet)) {
+    return { success: false, error: 'Registro de prueba descartado por seguridad' };
+  }
+  try {
+    const row = petToRow(pet, validClientIds);
+    let { data, error } = await supabase.from('pets').upsert(row, { onConflict: 'id' }).select();
+    if (error && error.code === '23503') {
+      row.client_id = null;
+      const retry = await supabase.from('pets').upsert(row, { onConflict: 'id' }).select();
+      data = retry.data;
+      error = retry.error;
+    }
+    if (error) {
+      console.error('Error al guardar mascota en Supabase:', error);
+      return { success: false, error: error.message };
+    }
+    const saved = data && data[0] ? rowToPet(data[0]) : pet;
+    return { success: true, data: saved };
+  } catch (err) {
+    console.error('Excepción al guardar mascota:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function saveSurgeryDirect(surgery) {
+  if (!supabase) return { success: false, error: 'Supabase no configurado' };
+  if (!surgery || isTestRecord(surgery)) {
+    return { success: false, error: 'Registro de prueba descartado por seguridad' };
+  }
+  try {
+    const row = surgeryToRow(surgery);
+    let { data, error } = await supabase.from('surgeries').upsert(row, { onConflict: 'id' }).select();
+    if (error && error.code === '23503') {
+      row.client_id = null;
+      row.pet_id = null;
+      const retry = await supabase.from('surgeries').upsert(row, { onConflict: 'id' }).select();
+      data = retry.data;
+      error = retry.error;
+    }
+    if (error) {
+      console.error('Error al guardar cirugía en Supabase:', error);
+      return { success: false, error: error.message };
+    }
+    const saved = data && data[0] ? rowToSurgery(data[0]) : surgery;
+    return { success: true, data: saved };
+  } catch (err) {
+    console.error('Excepción al guardar cirugía:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function saveVaccinationDirect(vaccination) {
+  if (!supabase) return { success: false, error: 'Supabase no configurado' };
+  if (!vaccination || isTestRecord(vaccination)) {
+    return { success: false, error: 'Registro de prueba descartado por seguridad' };
+  }
+  try {
+    const row = vaccinationToRow(vaccination);
+    const { data, error } = await supabase.from('vaccinations').upsert(row, { onConflict: 'id' }).select();
+    if (error) {
+      console.error('Error al guardar vacuna en Supabase:', error);
+      return { success: false, error: error.message };
+    }
+    const saved = data && data[0] ? rowToVaccination(data[0]) : vaccination;
+    return { success: true, data: saved };
+  } catch (err) {
+    console.error('Excepción al guardar vacuna:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function saveCageDirect(cage) {
+  if (!supabase) return { success: false, error: 'Supabase no configurado' };
+  if (!cage) return { success: false, error: 'Jaula inválida' };
+  try {
+    const row = cageToRow(cage);
+    let { data, error } = await supabase.from('cages').upsert(row, { onConflict: 'id' }).select();
+    if (error && error.code === '23505') {
+      row.code = `${row.code} (${String(row.id).slice(-4)})`;
+      const retry = await supabase.from('cages').upsert(row, { onConflict: 'id' }).select();
+      data = retry.data;
+      error = retry.error;
+    }
+    if (error) {
+      console.error('Error al guardar jaula en Supabase:', error);
+      return { success: false, error: error.message };
+    }
+    const saved = data && data[0] ? rowToCage(data[0]) : cage;
+    return { success: true, data: saved };
+  } catch (err) {
+    console.error('Excepción al guardar jaula:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function saveRescueDirect(rescue) {
+  if (!supabase) return { success: false, error: 'Supabase no configurado' };
+  if (!rescue || isTestRecord(rescue)) {
+    return { success: false, error: 'Rescate inválido o descartado' };
+  }
+  try {
+    const row = rescueToRow(rescue);
+    let { data, error } = await supabase.from('rescues').upsert(row, { onConflict: 'id' }).select();
+    if (error && error.code === '23505') {
+      row.rescue_code = `${row.rescue_code}-${String(rescue.id).slice(-4)}`;
+      const retry = await supabase.from('rescues').upsert(row, { onConflict: 'id' }).select();
+      data = retry.data;
+      error = retry.error;
+    }
+    if (error) {
+      console.error('Error al guardar rescate en Supabase:', error);
+      return { success: false, error: error.message };
+    }
+    const saved = data && data[0] ? rowToRescue(data[0]) : rescue;
+    return { success: true, data: saved };
+  } catch (err) {
+    console.error('Excepción al guardar rescate:', err);
+    return { success: false, error: err.message };
   }
 }
 

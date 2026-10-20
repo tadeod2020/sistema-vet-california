@@ -589,7 +589,7 @@ export function Agenda() {
                 <input
                   type="text"
                   required
-                  placeholder="Ej. Carmen Villalobos o Rescate Callejero"
+                  placeholder="Ej. Juan Pérez o Rescate Callejero"
                   value={formData.clientName}
                   onChange={(e) => setFormData(prev => ({ ...prev, clientName: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
@@ -652,7 +652,7 @@ export function Agenda() {
                         required={index === 0}
                         placeholder={
                           index === 0
-                            ? "Ej. Canela (Mestizo) o Perro #1"
+                            ? "Ej. Max (Mestizo) o Perro #1"
                             : `Nombre o descripción del perro #${index + 1}`
                         }
                         value={petName}

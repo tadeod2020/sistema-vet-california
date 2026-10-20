@@ -603,7 +603,7 @@ export function Surgeries() {
                   <input
                     type="text"
                     required
-                    placeholder="Ej. Canela o Rescate #104"
+                    placeholder="Ej. Max o Rescate #104"
                     value={form.patientName}
                     onChange={(e) => setForm(prev => ({ ...prev, patientName: e.target.value }))}
                     className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none font-bold"
@@ -613,7 +613,7 @@ export function Surgeries() {
                   <label className="block text-xs font-bold text-slate-700 mb-1">Dueño / Rescatista</label>
                   <input
                     type="text"
-                    placeholder="Ej. Carmen Villalobos"
+                    placeholder="Ej. Juan Pérez"
                     value={form.ownerName}
                     onChange={(e) => setForm(prev => ({ ...prev, ownerName: e.target.value }))}
                     className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"

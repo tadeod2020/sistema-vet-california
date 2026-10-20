@@ -12,14 +12,21 @@ import {
   normalizeAndDeduplicateRescues,
   createRealtimeSyncChannel,
   broadcastSync,
-  isTestRecord
+  isTestRecord,
+  saveAppointmentDirect,
+  saveClientDirect,
+  savePetDirect,
+  saveSurgeryDirect,
+  saveVaccinationDirect,
+  saveCageDirect,
+  saveRescueDirect
 } from '../lib/supabase';
 
 export { formatPetAge };
 
 const AppContext = createContext();
 
-const STORAGE_KEY = 'vet_california_system_v5_clean';
+const STORAGE_KEY = 'vet_california_system_v6_clean';
 const AUTH_STORAGE_KEY = 'vet_california_auth_session_v3';
 
 function safeSaveLocalStorage(key, stateObj) {
@@ -123,7 +130,13 @@ export function AppProvider({ children }) {
   const [data, setData] = useState(() => {
     try {
       // Limpiar versiones anteriores del almacenamiento local que pudieran contener datos de prueba
-      ['vet_california_system_v1', 'vet_california_system_v2_clean', 'vet_california_system_v3_clean', 'vet_california_system_v4_clean'].forEach(k => {
+      [
+        'vet_california_system_v1',
+        'vet_california_system_v2_clean',
+        'vet_california_system_v3_clean',
+        'vet_california_system_v4_clean',
+        'vet_california_system_v5_clean'
+      ].forEach(k => {
         try { localStorage.removeItem(k); } catch (e) {}
       });
 
@@ -245,7 +258,7 @@ export function AppProvider({ children }) {
     };
   }, []);
 
-  // Suscripción a canal Realtime para sincronizar cambios entre múltiples dispositivos
+  // Suscripción a canal Realtime para sincronizar cambios entre múltiples dispositivos en milisegundos
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
@@ -253,12 +266,43 @@ export function AppProvider({ children }) {
       // Ignorar actualizaciones si provienen de este mismo dispositivo
       if (payload?.deviceId === deviceIdRef.current) return;
 
-      // Si el usuario local acaba de editar algo en los últimos 1.5s, no sobreescribir entradas en vuelo
-      if (Date.now() - lastLocalEditAtRef.current < 1500) {
-        setTimeout(refreshFromSupabaseSilently, 1600);
+      console.log('📡 [Realtime] Cambio recibido de otro dispositivo:', payload);
+
+      // Si es una mutación puntual (upsert/delete de una tabla específica):
+      if (payload?.action === 'upsert' && payload.table && payload.item) {
+        if (!isTestRecord(payload.item)) {
+          isRemoteUpdateRef.current = true;
+          setData(prev => {
+            const tableKey = payload.table;
+            const currentList = prev[tableKey] || [];
+            const exists = currentList.some(i => i.id === payload.item.id);
+            const nextList = exists
+              ? currentList.map(i => i.id === payload.item.id ? { ...i, ...payload.item } : i)
+              : [payload.item, ...currentList];
+            const next = { ...prev, [tableKey]: nextList };
+            safeSaveLocalStorage(STORAGE_KEY, next);
+            return next;
+          });
+          setCloudStatus('synced');
+          setLastSyncedAt(new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }));
+          return;
+        }
+      }
+
+      if (payload?.action === 'delete' && payload.table && payload.id) {
+        isRemoteUpdateRef.current = true;
+        setData(prev => {
+          const tableKey = payload.table;
+          const currentList = prev[tableKey] || [];
+          const next = { ...prev, [tableKey]: currentList.filter(i => i.id !== payload.id) };
+          safeSaveLocalStorage(STORAGE_KEY, next);
+          return next;
+        });
+        setCloudStatus('synced');
         return;
       }
 
+      // Si es una señal general, refrescar silenciosamente
       await refreshFromSupabaseSilently();
     });
 
@@ -280,7 +324,7 @@ export function AppProvider({ children }) {
     const handleFocusOrVisible = async () => {
       if (document.visibilityState === 'visible') {
         const now = Date.now();
-        if (now - lastFetchedAtRef.current > 10000 && now - lastLocalEditAtRef.current > 2500) {
+        if (now - lastFetchedAtRef.current > 8000 && now - lastLocalEditAtRef.current > 2000) {
           await refreshFromSupabaseSilently();
         }
       }
@@ -300,12 +344,12 @@ export function AppProvider({ children }) {
     window.addEventListener('focus', handleFocusOrVisible);
     window.addEventListener('storage', handleStorageEvent);
 
-    // Sondeo de respaldo cada 25 segundos
+    // Sondeo de respaldo cada 15 segundos para máxima frescura multi-dispositivo
     const intervalId = setInterval(() => {
       if (document.visibilityState === 'visible') {
         handleFocusOrVisible();
       }
-    }, 25000);
+    }, 15000);
 
     return () => {
       document.removeEventListener('visibilitychange', handleFocusOrVisible);
@@ -315,95 +359,61 @@ export function AppProvider({ children }) {
     };
   }, []);
 
-  // Función serializada para enviar cambios a Supabase sin carreras ni colisiones
-  const performSync = async (dataToSync) => {
-    if (!isSupabaseConfigured || !isInitialCloudLoadDone.current) return;
-
-    if (isSyncingRef.current) {
-      syncQueuedRef.current = true;
-      return;
-    }
-
-    isSyncingRef.current = true;
+  // Comprobación y subida inmediata por cada modificación individual
+  const verifyAndUploadDirect = async (table, item, saveFn) => {
+    if (!isSupabaseConfigured) return;
     setCloudStatus('syncing');
 
     try {
-      const cleanData = {
-        ...dataToSync,
-        clients: (dataToSync.clients || []).filter(c => !isTestRecord(c)),
-        pets: (dataToSync.pets || []).filter(p => !isTestRecord(p)),
-        appointments: (dataToSync.appointments || []).filter(a => !isTestRecord(a)),
-        surgeries: (dataToSync.surgeries || []).filter(s => !isTestRecord(s)),
-        vaccinations: (dataToSync.vaccinations || []).filter(v => !isTestRecord(v)),
-        rescues: (dataToSync.rescues || []).filter(r => !isTestRecord(r)),
-        cages: dataToSync.cages || []
-      };
-
-      const res = await syncAllToSupabase(cleanData);
-      if (res.success) {
+      const res = await saveFn();
+      if (res && res.success) {
         const timeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
         setCloudStatus('synced');
         setLastSyncedAt(timeStr);
-        // Avisar a otros dispositivos conectados
+        // Notificar inmediatamente a otros dispositivos conectados vía Supabase Realtime
         broadcastSync(realtimeChannelRef.current, {
+          action: 'upsert',
+          table,
+          item: res.data || item,
           deviceId: deviceIdRef.current,
           time: timeStr
         });
       } else {
-        console.warn('Sync a Supabase reportó aviso/error:', res.error);
+        console.warn(`Sync individual de ${table} reportó aviso:`, res?.error);
         setCloudStatus('error');
+        showToast(`Aviso de nube al guardar en ${table}: ${res?.error || 'Revisa conexión'}`, 'error');
       }
     } catch (err) {
-      console.error('Error al sincronizar con Supabase:', err);
+      console.error(`Error en subida inmediata de ${table}:`, err);
       setCloudStatus('error');
-    } finally {
-      isSyncingRef.current = false;
-      if (syncQueuedRef.current) {
-        syncQueuedRef.current = false;
-        setTimeout(() => {
-          performSync(dataRef.current);
-        }, 150);
-      }
     }
   };
 
-  // Guardado local y subida automática debounced a la nube con cada cambio local
+  const verifyAndDeleteDirect = async (table, id) => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const res = await deleteRowFromSupabase(table, id);
+      if (res && res.success) {
+        const timeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        setCloudStatus('synced');
+        setLastSyncedAt(timeStr);
+        broadcastSync(realtimeChannelRef.current, {
+          action: 'delete',
+          table,
+          id,
+          deviceId: deviceIdRef.current,
+          time: timeStr
+        });
+      }
+    } catch (err) {
+      console.error(`Error eliminando de ${table}:`, err);
+    }
+  };
+
+  // Guardado local inmediato con cada cambio
   useEffect(() => {
     safeSaveLocalStorage(STORAGE_KEY, data);
-
-    // Si el cambio de estado fue provocado por una sincronización remota, no re-subir
-    if (isRemoteUpdateRef.current) {
-      isRemoteUpdateRef.current = false;
-      return;
-    }
-
-    lastLocalEditAtRef.current = Date.now();
-
-    if (!isSupabaseConfigured || !isInitialCloudLoadDone.current) return;
-
-    if (syncTimeoutRef.current) {
-      clearTimeout(syncTimeoutRef.current);
-    }
-
-    syncTimeoutRef.current = setTimeout(() => {
-      performSync(data);
-    }, 450);
-
-    return () => {
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-    };
   }, [data]);
-
-  // Reintento automático si quedó en estado de error
-  useEffect(() => {
-    if (cloudStatus !== 'error' || !isSupabaseConfigured || !isInitialCloudLoadDone.current) return;
-
-    const retryTimer = setTimeout(async () => {
-      performSync(dataRef.current);
-    }, 8000);
-
-    return () => clearTimeout(retryTimer);
-  }, [cloudStatus]);
 
   const syncNow = async () => {
     if (!isSupabaseConfigured) {
@@ -506,6 +516,7 @@ export function AppProvider({ children }) {
 
     const created = {
       ...newApt,
+      phone: String(newApt.phone || '').trim(),
       petName: combinedPetName,
       petNames: cleanPetNames.length > 0 ? cleanPetNames : [combinedPetName].filter(Boolean),
       id: `apt-${Date.now()}`,
@@ -519,42 +530,67 @@ export function AppProvider({ children }) {
 
     const petCountLabel = created.petNames.length > 1 ? ` (${created.petNames.length} mascotas)` : '';
     showToast(`Cita agendada para las ${newApt.timeHour}${petCountLabel}`);
+
+    // Comprobación y subida inmediata a Supabase
+    const validClientIds = new Set((data.clients || []).map(c => c.id));
+    const validPetIds = new Set((data.pets || []).map(p => p.id));
+    verifyAndUploadDirect('appointments', created, () => saveAppointmentDirect(created, validClientIds, validPetIds));
+
     return { success: true, appointment: created };
   };
 
   const updateAppointment = (aptId, updatedFields) => {
-    const cleanPetNames = Array.isArray(updatedFields.petNames)
-      ? updatedFields.petNames.map(n => n.trim()).filter(Boolean)
-      : (updatedFields.petName ? [updatedFields.petName.trim()].filter(Boolean) : undefined);
+    let targetUpdated = null;
+    setData(prev => {
+      const cleanPetNames = Array.isArray(updatedFields.petNames)
+        ? updatedFields.petNames.map(n => n.trim()).filter(Boolean)
+        : (updatedFields.petName ? [updatedFields.petName.trim()].filter(Boolean) : undefined);
 
-    const combinedPetName = cleanPetNames && cleanPetNames.length > 0
-      ? cleanPetNames.join(', ')
-      : updatedFields.petName;
+      const combinedPetName = cleanPetNames && cleanPetNames.length > 0
+        ? cleanPetNames.join(', ')
+        : updatedFields.petName;
 
-    setData(prev => ({
-      ...prev,
-      appointments: prev.appointments.map(apt => {
+      const nextApts = prev.appointments.map(apt => {
         if (apt.id !== aptId) return apt;
-        return {
+        targetUpdated = {
           ...apt,
           ...updatedFields,
+          phone: String(updatedFields.phone !== undefined ? updatedFields.phone : (apt.phone || '')).trim(),
           ...(combinedPetName !== undefined ? { petName: combinedPetName } : {}),
           ...(cleanPetNames !== undefined ? { petNames: cleanPetNames } : {})
         };
-      })
-    }));
+        return targetUpdated;
+      });
+      return { ...prev, appointments: nextApts };
+    });
+
     showToast('Cita médica actualizada con éxito');
+
+    if (targetUpdated) {
+      const validClientIds = new Set((data.clients || []).map(c => c.id));
+      const validPetIds = new Set((data.pets || []).map(p => p.id));
+      verifyAndUploadDirect('appointments', targetUpdated, () => saveAppointmentDirect(targetUpdated, validClientIds, validPetIds));
+    }
     return { success: true };
   };
 
   const updateAppointmentStatus = (aptId, newStatus) => {
-    setData(prev => ({
-      ...prev,
-      appointments: prev.appointments.map(apt => 
-        apt.id === aptId ? { ...apt, status: newStatus } : apt
-      )
-    }));
+    let targetUpdated = null;
+    setData(prev => {
+      const nextApts = prev.appointments.map(apt => {
+        if (apt.id !== aptId) return apt;
+        targetUpdated = { ...apt, status: newStatus };
+        return targetUpdated;
+      });
+      return { ...prev, appointments: nextApts };
+    });
     showToast(`Estado de cita actualizado a: ${newStatus}`);
+
+    if (targetUpdated) {
+      const validClientIds = new Set((data.clients || []).map(c => c.id));
+      const validPetIds = new Set((data.pets || []).map(p => p.id));
+      verifyAndUploadDirect('appointments', targetUpdated, () => saveAppointmentDirect(targetUpdated, validClientIds, validPetIds));
+    }
   };
 
   const deleteAppointment = (aptId) => {
@@ -562,8 +598,7 @@ export function AppProvider({ children }) {
       ...prev,
       appointments: prev.appointments.filter(apt => apt.id !== aptId)
     }));
-    deleteRowFromSupabase('appointments', aptId);
-    broadcastSync(realtimeChannelRef.current, { deviceId: deviceIdRef.current, action: 'delete', table: 'appointments', id: aptId });
+    verifyAndDeleteDirect('appointments', aptId);
     showToast('Cita cancelada/eliminada del registro', 'info');
   };
 
@@ -572,6 +607,7 @@ export function AppProvider({ children }) {
     const created = { ...newClient, id: `cli-${Date.now()}` };
     setData(prev => ({ ...prev, clients: [created, ...prev.clients] }));
     showToast(`Cliente ${created.name} registrado con éxito`);
+    verifyAndUploadDirect('clients', created, () => saveClientDirect(created));
     return created;
   };
 
@@ -586,10 +622,15 @@ export function AppProvider({ children }) {
     };
     setData(prev => ({ ...prev, pets: [created, ...prev.pets] }));
     showToast(`Mascota ${created.name} dada de alta en el sistema`);
+    const validClientIds = new Set((data.clients || []).map(c => c.id));
+    verifyAndUploadDirect('pets', created, () => savePetDirect(created, validClientIds));
     return created;
   };
 
   const updatePet = (petId, fields) => {
+    let petToUpload = null;
+    let clientToUpload = null;
+
     setData(prev => {
       const targetPet = prev.pets.find(p => p.id === petId);
       if (!targetPet) return prev;
@@ -633,6 +674,7 @@ export function AppProvider({ children }) {
         ageMonths: resolvedAgeMonths,
         ...(petFields.weightKg !== undefined && petFields.weightKg !== '' ? { weightKg: Number(petFields.weightKg) } : {})
       };
+      petToUpload = updatedPetObj;
 
       let updatedClients = prev.clients;
       if (ownerName !== undefined || ownerPhone !== undefined || ownerAddress !== undefined || ownerEmail !== undefined) {
@@ -643,7 +685,7 @@ export function AppProvider({ children }) {
             if (c.id !== targetPet.clientId) return c;
             const nextPhone = cleanPhone || c.phone;
             const nextDigits = nextPhone.replace(/\D/g, '');
-            return {
+            clientToUpload = {
               ...c,
               ...(ownerName?.trim() ? { name: ownerName.trim() } : {}),
               ...(cleanPhone ? {
@@ -653,6 +695,7 @@ export function AppProvider({ children }) {
               ...(ownerAddress !== undefined ? { address: ownerAddress.trim() } : {}),
               ...(ownerEmail !== undefined ? { email: ownerEmail.trim() } : {})
             };
+            return clientToUpload;
           });
         } else if (ownerName?.trim() || cleanPhone) {
           const newClient = {
@@ -666,6 +709,7 @@ export function AppProvider({ children }) {
             tag: 'Cliente Regular',
             notes: ''
           };
+          clientToUpload = newClient;
           updatedClients = [newClient, ...prev.clients];
           updatedPetObj.clientId = newClient.id;
         }
@@ -683,14 +727,25 @@ export function AppProvider({ children }) {
         vaccinations: updatedVaccinations
       };
     });
+
     showToast('Datos de la mascota actualizados con éxito');
+
+    if (clientToUpload) {
+      verifyAndUploadDirect('clients', clientToUpload, () => saveClientDirect(clientToUpload));
+    }
+    if (petToUpload) {
+      const validClientIds = new Set((data.clients || []).map(c => c.id));
+      if (clientToUpload) validClientIds.add(clientToUpload.id);
+      verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
+    }
   };
 
   const addClinicalNote = (petId, note) => {
+    let petToUpload = null;
     const newNote = {
       id: `cn-${Date.now()}`,
       date: note.date || new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }),
-      vet: note.vet || 'Médico Veterinario de Guardia',
+      vet: note.vet || 'Dra. María José Mendoza Gutiérrez',
       reason: note.reason || 'Consulta General',
       diagnosis: note.diagnosis || 'Revisión general satisfactoria',
       vitals: {
@@ -702,24 +757,31 @@ export function AppProvider({ children }) {
       nextCheckup: note.nextCheckup || ''
     };
 
-    setData(prev => ({
-      ...prev,
-      pets: prev.pets.map(p => {
+    setData(prev => {
+      const nextPets = prev.pets.map(p => {
         if (p.id === petId) {
-          return {
+          petToUpload = {
             ...p,
             clinicalNotes: [newNote, ...(p.clinicalNotes || [])]
           };
+          return petToUpload;
         }
         return p;
-      })
-    }));
+      });
+      return { ...prev, pets: nextPets };
+    });
 
     showToast('Nota médica agregada al expediente');
+
+    if (petToUpload) {
+      const validClientIds = new Set((data.clients || []).map(c => c.id));
+      verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
+    }
     return newNote;
   };
 
   const addLabResult = (petId, result) => {
+    let petToUpload = null;
     const newResult = {
       id: `lab-${Date.now()}`,
       date: result.date || new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }),
@@ -732,37 +794,50 @@ export function AppProvider({ children }) {
       performedBy: result.performedBy || 'Laboratorio Clínico California'
     };
 
-    setData(prev => ({
-      ...prev,
-      pets: prev.pets.map(p => {
+    setData(prev => {
+      const nextPets = prev.pets.map(p => {
         if (p.id === petId) {
-          return {
+          petToUpload = {
             ...p,
             labResults: [newResult, ...(p.labResults || [])]
           };
+          return petToUpload;
         }
         return p;
-      })
-    }));
+      });
+      return { ...prev, pets: nextPets };
+    });
 
     showToast('Estudio de laboratorio adjuntado al expediente');
+
+    if (petToUpload) {
+      const validClientIds = new Set((data.clients || []).map(c => c.id));
+      verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
+    }
     return newResult;
   };
 
   const deleteLabResult = (petId, resultId) => {
-    setData(prev => ({
-      ...prev,
-      pets: prev.pets.map(p => {
+    let petToUpload = null;
+    setData(prev => {
+      const nextPets = prev.pets.map(p => {
         if (p.id === petId) {
-          return {
+          petToUpload = {
             ...p,
             labResults: (p.labResults || []).filter(item => item.id !== resultId)
           };
+          return petToUpload;
         }
         return p;
-      })
-    }));
+      });
+      return { ...prev, pets: nextPets };
+    });
     showToast('Estudio eliminado del expediente', 'info');
+
+    if (petToUpload) {
+      const validClientIds = new Set((data.clients || []).map(c => c.id));
+      verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
+    }
   };
 
   const openPetPassport = (petId) => {
@@ -782,6 +857,7 @@ export function AppProvider({ children }) {
 
     let updatedClients = data.clients;
     let clientId;
+    let newClientToUpload = null;
 
     if (existingClient) {
       clientId = existingClient.id;
@@ -797,6 +873,7 @@ export function AppProvider({ children }) {
         tag: 'Cliente Regular',
         notes: ''
       };
+      newClientToUpload = newClient;
       updatedClients = [newClient, ...data.clients];
       clientId = newClient.id;
     }
@@ -833,6 +910,14 @@ export function AppProvider({ children }) {
     }));
 
     showToast(`¡Mascota "${newPet.name}" y dueño "${ownerName}" guardados exitosamente!`);
+
+    // Subida y comprobación directa e inmediata a Supabase
+    if (newClientToUpload) {
+      verifyAndUploadDirect('clients', newClientToUpload, () => saveClientDirect(newClientToUpload));
+    }
+    const validClientIds = new Set(updatedClients.map(c => c.id));
+    verifyAndUploadDirect('pets', newPet, () => savePetDirect(newPet, validClientIds));
+
     return newPet;
   };
 
@@ -847,37 +932,53 @@ export function AppProvider({ children }) {
     };
     setData(prev => ({ ...prev, rescues: [created, ...prev.rescues] }));
     showToast(`Rescate registrado con código ${created.code}`);
+    verifyAndUploadDirect('rescues', created, () => saveRescueDirect(created));
     return created;
   };
 
   const addRescueIntervention = (rescueId, intervention) => {
+    let rescueToUpload = null;
     const newIntervention = {
       ...intervention,
       date: intervention.date || new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })
     };
 
-    setData(prev => ({
-      ...prev,
-      rescues: prev.rescues.map(resc => {
+    setData(prev => {
+      const nextRescues = prev.rescues.map(resc => {
         if (resc.id === rescueId) {
-          return {
+          rescueToUpload = {
             ...resc,
             interventions: [newIntervention, ...(resc.interventions || [])]
           };
+          return rescueToUpload;
         }
         return resc;
-      })
-    }));
+      });
+      return { ...prev, rescues: nextRescues };
+    });
 
     showToast('Intervención clínica agregada a la bitácora del rescate');
+    if (rescueToUpload) {
+      verifyAndUploadDirect('rescues', rescueToUpload, () => saveRescueDirect(rescueToUpload));
+    }
   };
 
   const updateRescueStatus = (rescueId, newStatus) => {
-    setData(prev => ({
-      ...prev,
-      rescues: prev.rescues.map(r => r.id === rescueId ? { ...r, healthStatus: newStatus } : r)
-    }));
+    let rescueToUpload = null;
+    setData(prev => {
+      const nextRescues = prev.rescues.map(r => {
+        if (r.id === rescueId) {
+          rescueToUpload = { ...r, healthStatus: newStatus };
+          return rescueToUpload;
+        }
+        return r;
+      });
+      return { ...prev, rescues: nextRescues };
+    });
     showToast(`Estado de salud del rescate actualizado: ${newStatus}`);
+    if (rescueToUpload) {
+      verifyAndUploadDirect('rescues', rescueToUpload, () => saveRescueDirect(rescueToUpload));
+    }
   };
 
   // Cirugías (con soporte para procedimientos adicionales como vacunas, desparasitación, etc.)
@@ -891,6 +992,8 @@ export function AppProvider({ children }) {
       additionalProcedures: cleanAdditional,
       id: `surg-${Date.now()}`
     };
+
+    let generatedVaccines = [];
 
     setData(prev => {
       let nextVaccinations = prev.vaccinations || [];
@@ -926,7 +1029,7 @@ export function AppProvider({ children }) {
               return 'Aplicada en Quirófano / Cirugía';
             };
 
-            const newVacRecords = vaccineProcs.map((vacName, idx) => {
+            generatedVaccines = vaccineProcs.map((vacName, idx) => {
               const cleanName = vacName.replace(/^[^\wÁÉÍÓÚáéíóúÑñ]+/, '').trim();
               return {
                 id: `vac-${Date.now()}-${idx}`,
@@ -945,7 +1048,7 @@ export function AppProvider({ children }) {
               };
             });
 
-            nextVaccinations = [...newVacRecords, ...nextVaccinations];
+            nextVaccinations = [...generatedVaccines, ...nextVaccinations];
           }
         }
       }
@@ -959,35 +1062,59 @@ export function AppProvider({ children }) {
 
     const extraLabel = cleanAdditional.length > 0 ? ` (+${cleanAdditional.length} proc. adicionales)` : '';
     showToast(`Cirugía registrada: ${created.procedure}${extraLabel}`);
+
+    // Comprobación y subida inmediata a Supabase
+    verifyAndUploadDirect('surgeries', created, () => saveSurgeryDirect(created));
+    generatedVaccines.forEach(v => {
+      verifyAndUploadDirect('vaccinations', v, () => saveVaccinationDirect(v));
+    });
+
     return created;
   };
 
   const updateSurgery = (surgeryId, updatedFields) => {
+    let surgeryToUpload = null;
     const cleanAdditional = Array.isArray(updatedFields.additionalProcedures)
       ? updatedFields.additionalProcedures.map(p => p.trim()).filter(Boolean)
       : undefined;
 
-    setData(prev => ({
-      ...prev,
-      surgeries: prev.surgeries.map(s => {
+    setData(prev => {
+      const nextSurgeries = prev.surgeries.map(s => {
         if (s.id !== surgeryId) return s;
-        return {
+        surgeryToUpload = {
           ...s,
           ...updatedFields,
           ...(cleanAdditional !== undefined ? { additionalProcedures: cleanAdditional } : {})
         };
-      })
-    }));
+        return surgeryToUpload;
+      });
+      return { ...prev, surgeries: nextSurgeries };
+    });
+
     showToast('Registro quirúrgico y procedimientos actualizados');
+
+    if (surgeryToUpload) {
+      verifyAndUploadDirect('surgeries', surgeryToUpload, () => saveSurgeryDirect(surgeryToUpload));
+    }
     return { success: true };
   };
 
   const updateSurgeryStatus = (surgeryId, newStatus) => {
-    setData(prev => ({
-      ...prev,
-      surgeries: prev.surgeries.map(s => s.id === surgeryId ? { ...s, status: newStatus } : s)
-    }));
+    let surgeryToUpload = null;
+    setData(prev => {
+      const nextSurgeries = prev.surgeries.map(s => {
+        if (s.id !== surgeryId) return s;
+        surgeryToUpload = { ...s, status: newStatus };
+        return surgeryToUpload;
+      });
+      return { ...prev, surgeries: nextSurgeries };
+    });
+
     showToast(`Cirugía actualizada a: ${newStatus}`);
+
+    if (surgeryToUpload) {
+      verifyAndUploadDirect('surgeries', surgeryToUpload, () => saveSurgeryDirect(surgeryToUpload));
+    }
   };
 
   const deleteSurgery = (surgeryId) => {
@@ -995,8 +1122,7 @@ export function AppProvider({ children }) {
       ...prev,
       surgeries: prev.surgeries.filter(s => s.id !== surgeryId)
     }));
-    deleteRowFromSupabase('surgeries', surgeryId);
-    broadcastSync(realtimeChannelRef.current, { deviceId: deviceIdRef.current, action: 'delete', table: 'surgeries', id: surgeryId });
+    verifyAndDeleteDirect('surgeries', surgeryId);
     showToast('Registro de cirugía eliminado', 'info');
   };
 
@@ -1005,6 +1131,7 @@ export function AppProvider({ children }) {
     const created = { ...newVac, id: `vac-${Date.now()}` };
     setData(prev => ({ ...prev, vaccinations: [created, ...prev.vaccinations] }));
     showToast(`Vacuna ${created.vaccineName} registrada en cartilla oficial`);
+    verifyAndUploadDirect('vaccinations', created, () => saveVaccinationDirect(created));
     return created;
   };
 
@@ -1034,10 +1161,12 @@ export function AppProvider({ children }) {
       cages: normalizeAndDeduplicateCages([...(prev.cages || []), created])
     }));
     showToast(`Jaula ${created.code} agregada al inventario clínico`);
+    verifyAndUploadDirect('cages', created, () => saveCageDirect(created));
     return created;
   };
 
   const assignPatientToCage = (cageId, occupantDetails) => {
+    let cageToUpload = null;
     const cleanPatientNames = Array.isArray(occupantDetails.patientNames)
       ? occupantDetails.patientNames.map(n => n.trim()).filter(Boolean)
       : (occupantDetails.patientName
@@ -1048,11 +1177,10 @@ export function AppProvider({ children }) {
       ? cleanPatientNames.join(', ')
       : (occupantDetails.patientName || '').trim();
 
-    setData(prev => ({
-      ...prev,
-      cages: (prev.cages || []).map(cage => {
+    setData(prev => {
+      const nextCages = (prev.cages || []).map(cage => {
         if (cage.id === cageId) {
-          return {
+          cageToUpload = {
             ...cage,
             status: 'Ocupada',
             currentOccupant: {
@@ -1062,65 +1190,93 @@ export function AppProvider({ children }) {
               intakeTime: occupantDetails.intakeTime || new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
             }
           };
+          return cageToUpload;
         }
         return cage;
-      })
-    }));
+      });
+      return { ...prev, cages: nextCages };
+    });
+
     const countLabel = cleanPatientNames.length > 1 ? ` (${cleanPatientNames.length} mascotas en la misma jaula)` : '';
     showToast(`Ingreso en jaula actualizado exitosamente${countLabel}`);
+
+    if (cageToUpload) {
+      verifyAndUploadDirect('cages', cageToUpload, () => saveCageDirect(cageToUpload));
+    }
   };
 
   const releaseCage = (cageId, markForCleaning = true) => {
-    setData(prev => ({
-      ...prev,
-      cages: (prev.cages || []).map(cage => {
+    let cageToUpload = null;
+    setData(prev => {
+      const nextCages = (prev.cages || []).map(cage => {
         if (cage.id === cageId) {
-          return {
+          cageToUpload = {
             ...cage,
             status: markForCleaning ? 'Necesita Limpieza' : 'Disponible',
             currentOccupant: null,
             cleaningNotes: markForCleaning ? 'Alta reciente. Requiere desinfección profunda y cambio de tapete.' : undefined
           };
+          return cageToUpload;
         }
         return cage;
-      })
-    }));
+      });
+      return { ...prev, cages: nextCages };
+    });
+
     showToast(markForCleaning ? 'Paciente dado de alta. Jaula marcada para limpieza.' : 'Paciente dado de alta. Jaula disponible.');
+
+    if (cageToUpload) {
+      verifyAndUploadDirect('cages', cageToUpload, () => saveCageDirect(cageToUpload));
+    }
   };
 
   const markCageClean = (cageId) => {
-    setData(prev => ({
-      ...prev,
-      cages: (prev.cages || []).map(cage => {
+    let cageToUpload = null;
+    setData(prev => {
+      const nextCages = (prev.cages || []).map(cage => {
         if (cage.id === cageId) {
-          return {
+          cageToUpload = {
             ...cage,
             status: 'Disponible',
             cleaningNotes: undefined,
             lastCleaned: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
           };
+          return cageToUpload;
         }
         return cage;
-      })
-    }));
+      });
+      return { ...prev, cages: nextCages };
+    });
+
     showToast('Jaula desinfectada y lista para nuevo paciente');
+
+    if (cageToUpload) {
+      verifyAndUploadDirect('cages', cageToUpload, () => saveCageDirect(cageToUpload));
+    }
   };
 
   const updateCageStatus = (cageId, newStatus) => {
-    setData(prev => ({
-      ...prev,
-      cages: (prev.cages || []).map(cage => {
+    let cageToUpload = null;
+    setData(prev => {
+      const nextCages = (prev.cages || []).map(cage => {
         if (cage.id === cageId) {
-          return {
+          cageToUpload = {
             ...cage,
             status: newStatus,
             ...(newStatus === 'Disponible' ? { currentOccupant: null } : {})
           };
+          return cageToUpload;
         }
         return cage;
-      })
-    }));
+      });
+      return { ...prev, cages: nextCages };
+    });
+
     showToast(`Estado de jaula actualizado a: ${newStatus}`);
+
+    if (cageToUpload) {
+      verifyAndUploadDirect('cages', cageToUpload, () => saveCageDirect(cageToUpload));
+    }
   };
 
   const deleteCage = (cageId) => {
@@ -1128,8 +1284,7 @@ export function AppProvider({ children }) {
       ...prev,
       cages: (prev.cages || []).filter(cage => cage.id !== cageId)
     }));
-    deleteRowFromSupabase('cages', cageId);
-    broadcastSync(realtimeChannelRef.current, { deviceId: deviceIdRef.current, action: 'delete', table: 'cages', id: cageId });
+    verifyAndDeleteDirect('cages', cageId);
     showToast('Jaula eliminada del inventario', 'info');
   };
 

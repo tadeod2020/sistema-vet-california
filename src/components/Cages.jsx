@@ -808,7 +808,7 @@ export function Cages() {
                 <label className="block text-xs font-bold text-slate-700 mb-1">Dueño / Rescatista</label>
                 <input
                   type="text"
-                  placeholder="Ej. Letty Morales o Carlos Mendoza"
+                  placeholder="Ej. Letty Morales o Víctor Aquino"
                   value={assignForm.ownerName}
                   onChange={(e) => setAssignForm(prev => ({ ...prev, ownerName: e.target.value }))}
                   className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
