@@ -6,7 +6,9 @@ import {
   syncAllToSupabase,
   deleteRowFromSupabase,
   clearAndResetSupabase,
-  formatPetAge
+  formatPetAge,
+  normalizeAndDeduplicateCages,
+  normalizeAndDeduplicateRescues
 } from '../lib/supabase';
 
 export { formatPetAge };
@@ -91,10 +93,12 @@ export function AppProvider({ children }) {
           pets: parsed.pets || [],
           clients: parsed.clients || [],
           appointments: parsed.appointments || [],
-          rescues: parsed.rescues || [],
+          rescues: normalizeAndDeduplicateRescues(parsed.rescues || []),
           surgeries: parsed.surgeries || [],
           vaccinations: parsed.vaccinations || [],
-          cages: parsed.cages && parsed.cages.length > 0 ? parsed.cages : INITIAL_DATA.cages
+          cages: normalizeAndDeduplicateCages(
+            parsed.cages && parsed.cages.length > 0 ? parsed.cages : INITIAL_DATA.cages
+          )
         };
       }
     } catch (e) {
@@ -135,9 +139,11 @@ export function AppProvider({ children }) {
         if (!isMounted || !cloudData) return;
 
         setData(prevLocal => {
-          const mergedCages = mergeArraysById(
-            prevLocal.cages && prevLocal.cages.length > 0 ? prevLocal.cages : INITIAL_DATA.cages,
-            cloudData.cages && cloudData.cages.length > 0 ? cloudData.cages : INITIAL_DATA.cages
+          const mergedCages = normalizeAndDeduplicateCages(
+            mergeArraysById(
+              prevLocal.cages && prevLocal.cages.length > 0 ? prevLocal.cages : INITIAL_DATA.cages,
+              cloudData.cages && cloudData.cages.length > 0 ? cloudData.cages : INITIAL_DATA.cages
+            )
           );
 
           const merged = {
@@ -145,7 +151,7 @@ export function AppProvider({ children }) {
             clients: mergeArraysById(prevLocal.clients, cloudData.clients),
             pets: mergeArraysById(prevLocal.pets, cloudData.pets),
             appointments: mergeArraysById(prevLocal.appointments, cloudData.appointments),
-            rescues: mergeArraysById(prevLocal.rescues, cloudData.rescues),
+            rescues: normalizeAndDeduplicateRescues(mergeArraysById(prevLocal.rescues, cloudData.rescues)),
             surgeries: mergeArraysById(prevLocal.surgeries, cloudData.surgeries),
             vaccinations: mergeArraysById(prevLocal.vaccinations, cloudData.vaccinations),
             cages: mergedCages
@@ -219,7 +225,36 @@ export function AppProvider({ children }) {
     }
     try {
       setCloudStatus('syncing');
-      await syncAllToSupabase(data);
+      let payloadToSync = {
+        ...data,
+        cages: normalizeAndDeduplicateCages(data.cages || []),
+        rescues: normalizeAndDeduplicateRescues(data.rescues || [])
+      };
+      try {
+        const cloudData = await fetchAllFromSupabase();
+        if (cloudData) {
+          payloadToSync = {
+            ...INITIAL_DATA,
+            clients: mergeArraysById(data.clients, cloudData.clients),
+            pets: mergeArraysById(data.pets, cloudData.pets),
+            appointments: mergeArraysById(data.appointments, cloudData.appointments),
+            rescues: normalizeAndDeduplicateRescues(mergeArraysById(data.rescues, cloudData.rescues)),
+            surgeries: mergeArraysById(data.surgeries, cloudData.surgeries),
+            vaccinations: mergeArraysById(data.vaccinations, cloudData.vaccinations),
+            cages: normalizeAndDeduplicateCages(
+              mergeArraysById(
+                data.cages && data.cages.length > 0 ? data.cages : INITIAL_DATA.cages,
+                cloudData.cages && cloudData.cages.length > 0 ? cloudData.cages : INITIAL_DATA.cages
+              )
+            )
+          };
+          setData(payloadToSync);
+        }
+      } catch (fetchErr) {
+        console.warn('Could not fetch before manual sync, uploading local data:', fetchErr);
+      }
+
+      await syncAllToSupabase(payloadToSync);
       const timeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
       setCloudStatus('synced');
       setLastSyncedAt(timeStr);
@@ -774,15 +809,29 @@ export function AppProvider({ children }) {
 
   // Jaulas / Caniles / Hospitalización
   const addCage = (newCage) => {
+    const rawCode = String(newCage.code || `J-${String((data.cages?.length || 0) + 1).padStart(2, '0')}`).trim();
+    const rawName = String(newCage.name || '').trim();
+    const codeExists = (data.cages || []).some(
+      c => String(c.code || '').trim().toLowerCase() === rawCode.toLowerCase()
+    );
+    const resolvedCode = codeExists
+      ? (rawName && !rawCode.toLowerCase().endsWith(rawName.toLowerCase())
+          ? `${rawCode} ${rawName}`
+          : `${rawCode} #${(data.cages?.length || 0) + 1}`)
+      : rawCode;
+
     const created = {
       ...newCage,
       id: `cage-${Date.now()}`,
-      code: newCage.code || `J-${String((data.cages?.length || 0) + 1).padStart(2, '0')}`,
+      code: resolvedCode,
       status: newCage.status || 'Disponible',
       currentOccupant: null,
       lastCleaned: 'Recién registrada'
     };
-    setData(prev => ({ ...prev, cages: [...(prev.cages || []), created] }));
+    setData(prev => ({
+      ...prev,
+      cages: normalizeAndDeduplicateCages([...(prev.cages || []), created])
+    }));
     showToast(`Jaula ${created.code} agregada al inventario clínico`);
     return created;
   };

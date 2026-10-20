@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://qjoilxivgxxjlzefbtka.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_7C_MmPrLsOTcatQH9evrGg_JvmJipbN';
+const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || 'https://qjoilxivgxxjlzefbtka.supabase.co';
+const supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_7C_MmPrLsOTcatQH9evrGg_JvmJipbN';
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
@@ -197,12 +197,56 @@ export function rowToAppointment(r) {
   };
 }
 
+export function normalizeAndDeduplicateCages(cages = []) {
+  const usedCodes = new Set();
+  return cages.map((c, idx) => {
+    if (!c) return c;
+    const rawCode = String(c.code || `J-${String(idx + 1).padStart(2, '0')}`).trim();
+    const rawName = String(c.name || '').trim();
+
+    let candidateCode = rawCode || `J-${String(idx + 1).padStart(2, '0')}`;
+    if (usedCodes.has(candidateCode.toLowerCase())) {
+      if (rawName && !candidateCode.toLowerCase().endsWith(rawName.toLowerCase())) {
+        candidateCode = `${rawCode} ${rawName}`.trim();
+      } else {
+        candidateCode = `${rawCode} #${idx + 1}`.trim();
+      }
+    }
+    if (usedCodes.has(candidateCode.toLowerCase())) {
+      candidateCode = `${candidateCode}-${String(c.id || idx).slice(-4)}`;
+    }
+    usedCodes.add(candidateCode.toLowerCase());
+
+    return {
+      ...c,
+      code: candidateCode
+    };
+  });
+}
+
+export function normalizeAndDeduplicateRescues(rescues = []) {
+  const usedCodes = new Set();
+  return rescues.map((r, idx) => {
+    if (!r) return r;
+    const rawCode = String(r.code || `RES-${new Date().getFullYear()}-${String(idx + 1).padStart(3, '0')}`).trim();
+    let candidateCode = rawCode;
+    if (usedCodes.has(candidateCode.toLowerCase())) {
+      candidateCode = `${rawCode}-${String(r.id || idx).slice(-4)}`;
+    }
+    usedCodes.add(candidateCode.toLowerCase());
+    return {
+      ...r,
+      code: candidateCode
+    };
+  });
+}
+
 export function cageToRow(c) {
   const isOccupied = c.status === 'Ocupada';
   const needsCleaning = c.status === 'Necesita Limpieza';
   return {
     id: String(c.id),
-    code: c.code || 'J-00',
+    code: String(c.code || 'J-00').trim(),
     name: c.name || 'Jaula',
     size: c.size || 'Mediana',
     is_occupied: isOccupied,
@@ -427,8 +471,8 @@ export async function syncAllToSupabase(data) {
   const clients = data.clients || [];
   const pets = data.pets || [];
   const appointments = data.appointments || [];
-  const cages = data.cages || [];
-  const rescues = data.rescues || [];
+  const cages = normalizeAndDeduplicateCages(data.cages || []);
+  const rescues = normalizeAndDeduplicateRescues(data.rescues || []);
   const surgeries = data.surgeries || [];
   const vaccinations = data.vaccinations || [];
 
@@ -447,16 +491,38 @@ export async function syncAllToSupabase(data) {
     if (error) throw error;
   }
 
-  // 3. Upsert remaining tables in parallel
-  const ops = [];
+  // 3. Upsert remaining tables in parallel (with automatic recovery on unique code collisions)
+  const upsertCagesSafe = async () => {
+    if (cages.length === 0) return { error: null };
+    const rows = cages.map(cageToRow);
+    const res = await supabase.from('cages').upsert(rows, { onConflict: 'id' });
+    if (res.error && res.error.code === '23505') {
+      const safeRows = rows.map((row, idx) => ({
+        ...row,
+        code: `${row.code} (${String(row.id || idx).slice(-4)})`
+      }));
+      return supabase.from('cages').upsert(safeRows, { onConflict: 'id' });
+    }
+    return res;
+  };
+
+  const upsertRescuesSafe = async () => {
+    if (rescues.length === 0) return { error: null };
+    const rows = rescues.map(rescueToRow);
+    const res = await supabase.from('rescues').upsert(rows, { onConflict: 'id' });
+    if (res.error && res.error.code === '23505') {
+      const safeRows = rows.map((row, idx) => ({
+        ...row,
+        rescue_code: `${row.rescue_code}-${String(row.id || idx).slice(-4)}`
+      }));
+      return supabase.from('rescues').upsert(safeRows, { onConflict: 'id' });
+    }
+    return res;
+  };
+
+  const ops = [upsertCagesSafe(), upsertRescuesSafe()];
   if (appointments.length > 0) {
     ops.push(supabase.from('appointments').upsert(appointments.map(a => appointmentToRow(a, validClientIds, validPetIds)), { onConflict: 'id' }));
-  }
-  if (cages.length > 0) {
-    ops.push(supabase.from('cages').upsert(cages.map(cageToRow), { onConflict: 'id' }));
-  }
-  if (rescues.length > 0) {
-    ops.push(supabase.from('rescues').upsert(rescues.map(rescueToRow), { onConflict: 'id' }));
   }
   if (surgeries.length > 0) {
     ops.push(supabase.from('surgeries').upsert(surgeries.map(surgeryToRow), { onConflict: 'id' }));
@@ -465,11 +531,9 @@ export async function syncAllToSupabase(data) {
     ops.push(supabase.from('vaccinations').upsert(vaccinations.map(vaccinationToRow), { onConflict: 'id' }));
   }
 
-  if (ops.length > 0) {
-    const results = await Promise.all(ops);
-    const err = results.find(r => r.error)?.error;
-    if (err) throw err;
-  }
+  const results = await Promise.all(ops);
+  const err = results.find(r => r?.error)?.error;
+  if (err) throw err;
 
   return { success: true };
 }
