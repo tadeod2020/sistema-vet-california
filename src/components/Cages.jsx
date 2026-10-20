@@ -16,8 +16,20 @@ import {
   Check,
   Stethoscope,
   SprayCan,
-  Building
+  Building,
+  Pencil
 } from 'lucide-react';
+
+function getCagePets(occupant) {
+  if (!occupant) return [];
+  if (Array.isArray(occupant.patientNames) && occupant.patientNames.length > 0) {
+    return occupant.patientNames.map(s => String(s).trim()).filter(Boolean);
+  }
+  if (occupant.patientName) {
+    return String(occupant.patientName).split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return [];
+}
 
 export function Cages() {
   const { 
@@ -29,6 +41,7 @@ export function Cages() {
     updateCageStatus, 
     deleteCage,
     pets, 
+    clients = [],
     rescues 
   } = useApp();
 
@@ -39,6 +52,7 @@ export function Cages() {
   const [isAddCageModalOpen, setIsAddCageModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedCageForAssign, setSelectedCageForAssign] = useState(null);
+  const [selectedClientId, setSelectedClientId] = useState('');
 
   // New Cage Form
   const [cageForm, setCageForm] = useState({
@@ -49,9 +63,9 @@ export function Cages() {
     status: 'Disponible'
   });
 
-  // Assign Patient Form
+  // Assign Patient Form (supports 2 or more pets in the same cage via patientNames)
   const [assignForm, setAssignForm] = useState({
-    patientName: '',
+    patientNames: [''],
     ownerName: '',
     reason: '',
     specialCare: '',
@@ -91,50 +105,146 @@ export function Cages() {
     });
   };
 
-  const openAssignModal = (cage) => {
+  const openAssignModal = (cage, appendEmptySlot = false) => {
     setSelectedCageForAssign(cage);
+    const occ = cage.currentOccupant;
+    const existingPets = getCagePets(occ);
+    const matchedClient = occ?.ownerName
+      ? clients.find(c => c.name.trim().toLowerCase() === occ.ownerName.trim().toLowerCase())
+      : null;
+    setSelectedClientId(matchedClient ? matchedClient.id : '');
+
+    let initialPetNames = existingPets.length > 0 ? [...existingPets] : [''];
+    if (appendEmptySlot && existingPets.length > 0) {
+      initialPetNames.push('');
+    }
+
     setAssignForm({
-      patientName: '',
-      ownerName: '',
-      reason: '',
-      specialCare: '',
-      intakeTime: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+      patientNames: initialPetNames,
+      ownerName: occ?.ownerName || '',
+      reason: occ?.reason || '',
+      specialCare: occ?.specialCare || '',
+      intakeTime: occ?.intakeTime || new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
     });
     setIsAssignModalOpen(true);
   };
 
   const handleAssignSubmit = (e) => {
     e.preventDefault();
-    if (!assignForm.patientName || !selectedCageForAssign) {
-      alert('El nombre del paciente es obligatorio');
+    const validPets = (assignForm.patientNames || []).map(n => n.trim()).filter(Boolean);
+    if (validPets.length === 0 || !selectedCageForAssign) {
+      alert('El nombre de al menos una mascota es obligatorio');
       return;
     }
 
-    assignPatientToCage(selectedCageForAssign.id, assignForm);
+    assignPatientToCage(selectedCageForAssign.id, {
+      ...assignForm,
+      patientNames: validPets,
+      patientName: validPets.join(', ')
+    });
     setIsAssignModalOpen(false);
   };
 
+  const handlePatientNameChange = (index, value) => {
+    setAssignForm(prev => {
+      const updated = [...(prev.patientNames || [''])];
+      updated[index] = value;
+      return { ...prev, patientNames: updated };
+    });
+  };
+
+  const addPatientField = () => {
+    setAssignForm(prev => ({
+      ...prev,
+      patientNames: [...(prev.patientNames || ['']), '']
+    }));
+  };
+
+  const removePatientField = (index) => {
+    setAssignForm(prev => {
+      if ((prev.patientNames || []).length <= 1) return prev;
+      return {
+        ...prev,
+        patientNames: prev.patientNames.filter((_, i) => i !== index)
+      };
+    });
+  };
+
+  const toggleCompanionPet = (petLabel) => {
+    setAssignForm(prev => {
+      const current = (prev.patientNames || []).map(p => p.trim()).filter(Boolean);
+      const exists = current.includes(petLabel);
+      let nextPets;
+      if (exists) {
+        nextPets = current.filter(p => p !== petLabel);
+        if (nextPets.length === 0) nextPets = [''];
+      } else {
+        nextPets = [...current, petLabel];
+      }
+      return { ...prev, patientNames: nextPets };
+    });
+  };
+
+  const removeSinglePetFromOccupiedCage = (cage, petIndexToRemove) => {
+    const currentPets = getCagePets(cage.currentOccupant);
+    if (currentPets.length <= 1) {
+      releaseCage(cage.id, true);
+      return;
+    }
+    const remainingPets = currentPets.filter((_, idx) => idx !== petIndexToRemove);
+    assignPatientToCage(cage.id, {
+      ...cage.currentOccupant,
+      patientNames: remainingPets,
+      patientName: remainingPets.join(', ')
+    });
+  };
+
   const handleQuickPatientSelect = (val) => {
+    if (!val) return;
+    let label = '';
+    let resolvedOwnerName = '';
+
     if (val.startsWith('pet-')) {
       const p = pets.find(item => item.id === val);
       if (p) {
-        setAssignForm(prev => ({
-          ...prev,
-          patientName: `${p.name} (${p.breed})`,
-          ownerName: 'Cliente registrado'
-        }));
+        const owner = clients.find(c => c.id === p.clientId);
+        label = `${p.name} (${p.breed})`;
+        resolvedOwnerName = owner ? owner.name : 'Cliente registrado';
+        if (p.clientId) setSelectedClientId(p.clientId);
       }
     } else if (val.startsWith('resc-')) {
       const r = rescues.find(item => item.id === val);
       if (r) {
-        setAssignForm(prev => ({
-          ...prev,
-          patientName: `${r.code} - ${r.physicalDescription.slice(0, 25)}...`,
-          ownerName: 'Rescate Callejero'
-        }));
+        label = `${r.code} - ${r.physicalDescription.slice(0, 25)}...`;
+        resolvedOwnerName = 'Rescate Callejero';
       }
     }
+
+    if (!label) return;
+
+    setAssignForm(prev => {
+      const currentList = [...(prev.patientNames || [''])];
+      const alreadyIncluded = currentList.some(item => item.trim().toLowerCase() === label.toLowerCase());
+      if (alreadyIncluded) return prev;
+
+      const emptyIndex = currentList.findIndex(item => !item.trim());
+      if (emptyIndex !== -1) {
+        currentList[emptyIndex] = label;
+      } else {
+        currentList.push(label);
+      }
+
+      return {
+        ...prev,
+        patientNames: currentList,
+        ownerName: prev.ownerName?.trim() ? prev.ownerName : resolvedOwnerName
+      };
+    });
   };
+
+  const ownerCompanionPets = selectedClientId
+    ? pets.filter(p => p.clientId === selectedClientId)
+    : [];
 
   return (
     <div className="space-y-6">
@@ -297,42 +407,85 @@ export function Cages() {
                 </div>
 
                 {/* OCCUPIED CONTENT */}
-                {isOccupied && cage.currentOccupant && (
-                  <div className="mt-3 p-3 rounded-xl bg-white border border-purple-200 shadow-xs space-y-2">
-                    <div className="flex items-start justify-between">
-                      <div className="font-extrabold text-xs text-purple-950 flex items-center gap-1.5">
-                        <PawPrint className="w-3.5 h-3.5 text-purple-700" />
-                        {cage.currentOccupant.patientName}
+                {isOccupied && cage.currentOccupant && (() => {
+                  const cagePets = getCagePets(cage.currentOccupant);
+                  const isMultiPet = cagePets.length > 1;
+                  return (
+                    <div className="mt-3 p-3 rounded-xl bg-white border border-purple-200 shadow-xs space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-1 flex-1 min-w-0">
+                          {isMultiPet && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-300">
+                              🐾 {cagePets.length} mascotas compartiendo jaula
+                            </span>
+                          )}
+                          {isMultiPet ? (
+                            <div className="flex flex-wrap gap-1 pt-0.5">
+                              {cagePets.map((petLabel, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-100 text-purple-950 border border-purple-200 text-xs font-extrabold"
+                                >
+                                  <PawPrint className="w-3 h-3 text-purple-700 shrink-0" />
+                                  <span>{petLabel}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeSinglePetFromOccupiedCage(cage, idx)}
+                                    title={`Dar de alta únicamente a ${petLabel}`}
+                                    aria-label={`Dar de alta únicamente a ${petLabel}`}
+                                    className="ml-0.5 text-purple-500 hover:text-rose-700 font-black cursor-pointer"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="font-extrabold text-xs text-purple-950 flex items-center gap-1.5">
+                              <PawPrint className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                              <span className="truncate">{cage.currentOccupant.patientName}</span>
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-mono text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded shrink-0">
+                          {cage.currentOccupant.intakeTime}
+                        </span>
                       </div>
-                      <span className="text-[10px] font-mono text-purple-600 bg-purple-50 px-1.5 py-0.2 rounded">
-                        {cage.currentOccupant.intakeTime}
-                      </span>
-                    </div>
 
-                    <div className="text-[11px] text-slate-600">
-                      <strong>Dueño:</strong> {cage.currentOccupant.ownerName}
-                    </div>
-
-                    <div className="text-[11px] text-slate-700 bg-purple-50/50 p-1.5 rounded-lg border border-purple-100 leading-snug">
-                      <strong>Motivo:</strong> {cage.currentOccupant.reason}
-                    </div>
-
-                    {cage.currentOccupant.specialCare && (
-                      <div className="text-[10px] text-rose-900 bg-rose-50 p-1.5 rounded-lg border border-rose-200 leading-snug">
-                        <strong>Cuidados:</strong> {cage.currentOccupant.specialCare}
+                      <div className="text-[11px] text-slate-600">
+                        <strong>Dueño:</strong> {cage.currentOccupant.ownerName || 'Cliente registrado'}
                       </div>
-                    )}
 
-                    <div className="pt-1 flex items-center justify-end">
-                      <button
-                        onClick={() => releaseCage(cage.id, true)}
-                        className="w-full py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-900 font-bold text-[11px] rounded-lg border border-rose-200 transition-colors flex items-center justify-center gap-1"
-                      >
-                        Dar de Alta y Marcar para Limpieza
-                      </button>
+                      <div className="text-[11px] text-slate-700 bg-purple-50/50 p-1.5 rounded-lg border border-purple-100 leading-snug">
+                        <strong>Motivo:</strong> {cage.currentOccupant.reason}
+                      </div>
+
+                      {cage.currentOccupant.specialCare && (
+                        <div className="text-[10px] text-rose-900 bg-rose-50 p-1.5 rounded-lg border border-rose-200 leading-snug">
+                          <strong>Cuidados:</strong> {cage.currentOccupant.specialCare}
+                        </div>
+                      )}
+
+                      <div className="pt-1 flex flex-col gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openAssignModal(cage, true)}
+                          className="w-full py-1.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-950 font-bold text-[11px] rounded-lg border border-amber-300 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3 text-rose-900 stroke-[2.5]" />
+                          Agregar 2da Mascota / Editar Jaula
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => releaseCage(cage.id, true)}
+                          className="w-full py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-900 font-bold text-[11px] rounded-lg border border-rose-200 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          Dar de Alta y Marcar para Limpieza
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* NEEDS CLEANING CONTENT */}
                 {needsCleaning && (
@@ -538,14 +691,17 @@ export function Cages() {
               {/* Quick Select from pets/rescues */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Cargar desde Pacientes Registrados (Opcional)
+                  Cargar desde Pacientes Registrados (Puedes elegir 1 o 2 mascotas)
                 </label>
                 <select
-                  onChange={(e) => handleQuickPatientSelect(e.target.value)}
+                  onChange={(e) => {
+                    handleQuickPatientSelect(e.target.value);
+                    e.target.value = '';
+                  }}
                   defaultValue=""
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
                 >
-                  <option value="">-- Seleccionar Mascota o Rescate --</option>
+                  <option value="">-- Seleccionar Mascota o Rescate para agregar a la jaula --</option>
                   <optgroup label="Mascotas con Dueño">
                     {pets.map(p => (
                       <option key={p.id} value={p.id}>
@@ -563,28 +719,100 @@ export function Cages() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Nombre del Paciente *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Rocky o RES-2026-003"
-                    value={assignForm.patientName}
-                    onChange={(e) => setAssignForm(prev => ({ ...prev, patientName: e.target.value }))}
-                    className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none font-bold"
-                  />
+              {/* Mascotas en esta Jaula (Soporta 2 o más mascotas en la misma jaula) */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/90 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <PawPrint className="w-4 h-4 text-rose-900" />
+                    Mascotas en esta Jaula *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addPatientField}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-500 rounded-lg shadow-2xs transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                    Agregar 2da mascota
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Dueño / Rescatista</label>
-                  <input
-                    type="text"
-                    placeholder="Ej. Carlos Mendoza o Carmen"
-                    value={assignForm.ownerName}
-                    onChange={(e) => setAssignForm(prev => ({ ...prev, ownerName: e.target.value }))}
-                    className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
-                  />
+
+                {/* Si el dueño tiene más mascotas registradas, mostrar selección rápida con 1 clic */}
+                {ownerCompanionPets.length > 1 && (
+                  <div className="pb-1">
+                    <div className="text-[11px] font-semibold text-slate-600 mb-1">
+                      Mascotas registradas de este dueño (clic para compartir jaula):
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ownerCompanionPets.map(pet => {
+                        const label = `${pet.name} (${pet.breed})`;
+                        const isSelected = (assignForm.patientNames || []).some(
+                          p => p.trim().toLowerCase() === label.toLowerCase() || p.trim().toLowerCase() === pet.name.trim().toLowerCase()
+                        );
+                        return (
+                          <button
+                            key={pet.id}
+                            type="button"
+                            onClick={() => toggleCompanionPet(label)}
+                            className={`text-xs px-2.5 py-1 rounded-lg font-bold border transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-amber-400 text-amber-950 border-amber-500 shadow-2xs'
+                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            🐾 {pet.name} {pet.breed ? `(${pet.breed})` : ''} {isSelected ? '✓' : '+'}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  {(assignForm.patientNames || ['']).map((petName, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-white border border-amber-300 text-amber-950 text-xs font-bold inline-flex items-center justify-center shrink-0">
+                        {index + 1}
+                      </span>
+                      <input
+                        type="text"
+                        required={index === 0}
+                        placeholder={
+                          index === 0
+                            ? 'Ej. Barry (Canino) o Mascota #1'
+                            : `Nombre de la mascota #${index + 1} (Ej. Bella)`
+                        }
+                        value={petName}
+                        onChange={(e) => handlePatientNameChange(index, e.target.value)}
+                        className="flex-1 px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none font-bold"
+                      />
+                      {(assignForm.patientNames || []).length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removePatientField(index)}
+                          title="Quitar esta mascota de la jaula"
+                          aria-label={`Quitar mascota ${index + 1}`}
+                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
+                <p className="text-[11px] text-slate-500">
+                  Usa <strong>+ Agregar 2da mascota</strong> o selecciona otra mascota de la lista si 2 pacientes compartirán esta jaula.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Dueño / Rescatista</label>
+                <input
+                  type="text"
+                  placeholder="Ej. Letty Morales o Carlos Mendoza"
+                  value={assignForm.ownerName}
+                  onChange={(e) => setAssignForm(prev => ({ ...prev, ownerName: e.target.value }))}
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                />
               </div>
 
               <div>

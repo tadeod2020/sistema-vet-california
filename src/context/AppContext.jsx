@@ -837,6 +837,16 @@ export function AppProvider({ children }) {
   };
 
   const assignPatientToCage = (cageId, occupantDetails) => {
+    const cleanPatientNames = Array.isArray(occupantDetails.patientNames)
+      ? occupantDetails.patientNames.map(n => n.trim()).filter(Boolean)
+      : (occupantDetails.patientName
+          ? occupantDetails.patientName.split(',').map(n => n.trim()).filter(Boolean)
+          : []);
+
+    const combinedPatientName = cleanPatientNames.length > 0
+      ? cleanPatientNames.join(', ')
+      : (occupantDetails.patientName || '').trim();
+
     setData(prev => ({
       ...prev,
       cages: (prev.cages || []).map(cage => {
@@ -846,6 +856,8 @@ export function AppProvider({ children }) {
             status: 'Ocupada',
             currentOccupant: {
               ...occupantDetails,
+              patientName: combinedPatientName,
+              patientNames: cleanPatientNames.length > 0 ? cleanPatientNames : [combinedPatientName].filter(Boolean),
               intakeTime: occupantDetails.intakeTime || new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
             }
           };
@@ -853,7 +865,8 @@ export function AppProvider({ children }) {
         return cage;
       })
     }));
-    showToast(`Paciente ingresado en jaula exitosamente`);
+    const countLabel = cleanPatientNames.length > 1 ? ` (${cleanPatientNames.length} mascotas en la misma jaula)` : '';
+    showToast(`Ingreso en jaula actualizado exitosamente${countLabel}`);
   };
 
   const releaseCage = (cageId, markForCleaning = true) => {
