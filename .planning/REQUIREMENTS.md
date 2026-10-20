@@ -14,7 +14,7 @@
 - Datos de contacto: Nombre, teléfono, WhatsApp directo (con link `https://wa.me/`), notas.
 
 ### RF-03: Ficha de Mascotas y Edición de Datos
-- Nombre, especie, raza, edad/fecha nacimiento, sexo, peso, color, microchip, antecedentes y alergias.
+- Nombre, especie, raza, edad (con soporte para **meses** o **años**), sexo, peso, color, microchip, antecedentes y alergias.
 - **Edición completa de la información de la mascota** (desde el directorio de mascotas, lista por propietario, expediente clínico digital y cartilla oficial), incluyendo actualización sincronizada de datos del propietario y vacunas.
 - Acceso directo desde la ficha a su historial de vacunas, cirugías y citas.
 
@@ -24,10 +24,11 @@
 - Bitácora de intervenciones: fecha, qué se le realizó (limpieza de heridas, suero, analgésico, esterilización, etc.), medicamentos y estado actual.
 - Estado del rescate: Crítico, En recuperación, Listo para adopción, Adoptado.
 
-### RF-05: Bitácora de Cirugías
-- Registro de procedimientos quirúrgicos (Esterilizaciones, Ovariohisterectomía, Profilaxis, Reducción de fracturas, Extracción de cuerpos extraños, etc.).
-- Campos: Mascota/Rescate, Tipo de cirugía, Médico cirujano, Fecha y hora, Anestesia aplicada, Notas pre y post-quirúrgicas, Cuidados y medicación recomendada.
-- Estatus: Programada, En recuperación, Dada de alta.
+### RF-05: Bitácora de Cirugías y Procedimientos Complementarios
+- Registro y edición de procedimientos quirúrgicos (Esterilizaciones, Ovariohisterectomía, Profilaxis, Reducción de fracturas, Extracción de cuerpos extraños, etc.).
+- **Soporte para múltiples procedimientos adicionales en la misma cirugía** (vacunas como Rabia, Séxtuple, Bordetella, Triple Felina, desparasitaciones, microchip, profilaxis dental, corte de uñas, o cualquier procedimiento personalizado), con registro automático opcional de vacunas en la Cartilla Oficial.
+- Campos: Mascota/Rescate, Tipo de cirugía, Procedimientos adicionales, Médico cirujano, Fecha y hora, Anestesia aplicada, Notas pre y post-quirúrgicas, Cuidados y medicación recomendada.
+- Estatus: Programada, En Quirófano, En Recuperación, Alta Médica.
 
 ### RF-06: Cartilla de Vacunación & "Passport to Travel"
 - Registro de vacunas: Rabia, Múltiple Canina (Séxtuple), Puppy, Bordetella, Desparasitaciones internas y externas.
@@ -45,5 +46,5 @@
 - Manejo de teclado (`Tab`, `Esc` para modales).
 - Respeta `prefers-reduced-motion`.
 
-### RNF-03: Persistencia de Datos
-- Almacenamiento instantáneo y persistente en el navegador con soporte de exportación/importación JSON para respaldos.
+### RNF-03: Persistencia de Datos y Nube Supabase
+- Sincronización bidireccional automática en tiempo real con **Supabase Cloud** (`clients`, `pets`, `appointments`, `cages`, `rescues`, `surgeries`, `vaccinations`) más respaldo local instantáneo y exportación/importación JSON.

@@ -13,7 +13,11 @@ import {
   MessageCircle,
   Phone,
   LogOut,
-  UserCheck
+  UserCheck,
+  Cloud,
+  RefreshCw,
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
 
 export function Navbar() {
@@ -26,7 +30,10 @@ export function Navbar() {
     rescues, 
     cages = [],
     currentUser,
-    logout
+    logout,
+    cloudStatus,
+    lastSyncedAt,
+    syncNow
   } = useApp();
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -75,6 +82,42 @@ export function Navbar() {
 
           {/* Quick Data Actions & User Session */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Supabase Cloud Sync Badge */}
+            <button
+              type="button"
+              onClick={syncNow}
+              title={
+                cloudStatus === 'synced'
+                  ? `Conectado a la nube de Supabase${lastSyncedAt ? ` (Última subida: ${lastSyncedAt})` : ''}. Haz clic para sincronizar ahora.`
+                  : cloudStatus === 'syncing'
+                  ? 'Subiendo cambios a la nube de Supabase...'
+                  : 'Haz clic para reintentar conexión con Supabase'
+              }
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold rounded-xl border shadow-xs transition-all active:scale-95 cursor-pointer ${
+                cloudStatus === 'synced'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                  : cloudStatus === 'syncing'
+                  ? 'bg-amber-50 text-amber-900 border-amber-300'
+                  : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
+              }`}
+            >
+              {cloudStatus === 'syncing' ? (
+                <RefreshCw className="w-3.5 h-3.5 text-amber-600 animate-spin shrink-0" />
+              ) : cloudStatus === 'synced' ? (
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+              )}
+              <Cloud className="w-3.5 h-3.5 shrink-0 hidden sm:inline" />
+              <span className="hidden md:inline">
+                {cloudStatus === 'syncing'
+                  ? 'Subiendo a Supabase...'
+                  : cloudStatus === 'synced'
+                  ? 'Supabase: En Nube'
+                  : 'Reintentar Nube'}
+              </span>
+            </button>
+
             <button
               onClick={exportBackup}
               title="Descargar respaldo JSON de la base de datos"

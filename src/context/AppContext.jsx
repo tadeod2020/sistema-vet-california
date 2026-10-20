@@ -1,5 +1,15 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { INITIAL_DATA, CLINIC_DOCTORS } from '../data/initialData';
+import {
+  isSupabaseConfigured,
+  fetchAllFromSupabase,
+  syncAllToSupabase,
+  deleteRowFromSupabase,
+  clearAndResetSupabase,
+  formatPetAge
+} from '../lib/supabase';
+
+export { formatPetAge };
 
 const AppContext = createContext();
 
@@ -15,6 +25,45 @@ export const CLINIC_CREDENTIALS = {
 
 // Aliased for backwards compatibility
 export const PROVISIONAL_CREDENTIALS = CLINIC_CREDENTIALS;
+
+function mergeArraysById(localArr = [], cloudArr = []) {
+  const map = new Map();
+  cloudArr.forEach(item => {
+    if (item && item.id) map.set(item.id, item);
+  });
+  localArr.forEach(localItem => {
+    if (!localItem || !localItem.id) return;
+    const cloudItem = map.get(localItem.id);
+    if (!cloudItem) {
+      map.set(localItem.id, localItem);
+    } else {
+      // Merge keeping richer nested arrays if local has more items
+      const merged = { ...cloudItem, ...localItem };
+      if (Array.isArray(cloudItem.clinicalNotes) || Array.isArray(localItem.clinicalNotes)) {
+        merged.clinicalNotes = (localItem.clinicalNotes?.length || 0) >= (cloudItem.clinicalNotes?.length || 0)
+          ? (localItem.clinicalNotes || [])
+          : (cloudItem.clinicalNotes || []);
+      }
+      if (Array.isArray(cloudItem.labResults) || Array.isArray(localItem.labResults)) {
+        merged.labResults = (localItem.labResults?.length || 0) >= (cloudItem.labResults?.length || 0)
+          ? (localItem.labResults || [])
+          : (cloudItem.labResults || []);
+      }
+      if (Array.isArray(cloudItem.additionalProcedures) || Array.isArray(localItem.additionalProcedures)) {
+        merged.additionalProcedures = (localItem.additionalProcedures?.length || 0) >= (cloudItem.additionalProcedures?.length || 0)
+          ? (localItem.additionalProcedures || [])
+          : (cloudItem.additionalProcedures || []);
+      }
+      if (Array.isArray(cloudItem.interventions) || Array.isArray(localItem.interventions)) {
+        merged.interventions = (localItem.interventions?.length || 0) >= (cloudItem.interventions?.length || 0)
+          ? (localItem.interventions || [])
+          : (cloudItem.interventions || []);
+      }
+      map.set(localItem.id, merged);
+    }
+  });
+  return Array.from(map.values());
+}
 
 export function AppProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(() => {
@@ -54,18 +103,13 @@ export function AppProvider({ children }) {
     return INITIAL_DATA;
   });
 
-  const [activeTab, setActiveTab] = useState('agenda'); // agenda | clients | rescues | surgeries | passport
+  const [activeTab, setActiveTab] = useState('agenda'); // agenda | clients | rescues | surgeries | passport | cages
   const [notification, setNotification] = useState(null);
   const [selectedPetIdForPassport, setSelectedPetIdForPassport] = useState(null);
-
-  // Auto-save to LocalStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.error('Error persisting state:', e);
-    }
-  }, [data]);
+  const [cloudStatus, setCloudStatus] = useState(isSupabaseConfigured ? 'syncing' : 'offline');
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const isInitialCloudLoadDone = useRef(false);
+  const syncTimeoutRef = useRef(null);
 
   // Toast / Notification helper
   const showToast = (message, type = 'success') => {
@@ -73,6 +117,118 @@ export function AppProvider({ children }) {
     setTimeout(() => {
       setNotification(prev => (prev?.message === message ? null : prev));
     }, 3800);
+  };
+
+  // Initial load & merge with Supabase Cloud
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setCloudStatus('offline');
+      isInitialCloudLoadDone.current = true;
+      return;
+    }
+
+    let isMounted = true;
+    (async () => {
+      try {
+        setCloudStatus('syncing');
+        const cloudData = await fetchAllFromSupabase();
+        if (!isMounted || !cloudData) return;
+
+        setData(prevLocal => {
+          const mergedCages = mergeArraysById(
+            prevLocal.cages && prevLocal.cages.length > 0 ? prevLocal.cages : INITIAL_DATA.cages,
+            cloudData.cages && cloudData.cages.length > 0 ? cloudData.cages : INITIAL_DATA.cages
+          );
+
+          const merged = {
+            ...INITIAL_DATA,
+            clients: mergeArraysById(prevLocal.clients, cloudData.clients),
+            pets: mergeArraysById(prevLocal.pets, cloudData.pets),
+            appointments: mergeArraysById(prevLocal.appointments, cloudData.appointments),
+            rescues: mergeArraysById(prevLocal.rescues, cloudData.rescues),
+            surgeries: mergeArraysById(prevLocal.surgeries, cloudData.surgeries),
+            vaccinations: mergeArraysById(prevLocal.vaccinations, cloudData.vaccinations),
+            cages: mergedCages
+          };
+
+          // Immediately upload merged state so any local records are saved in Supabase
+          syncAllToSupabase(merged)
+            .then(() => {
+              if (isMounted) {
+                setCloudStatus('synced');
+                setLastSyncedAt(new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }));
+              }
+            })
+            .catch(err => {
+              console.error('Error pushing initial merged state to Supabase:', err);
+              if (isMounted) setCloudStatus('error');
+            });
+
+          return merged;
+        });
+      } catch (err) {
+        console.error('Error loading from Supabase:', err);
+        if (isMounted) setCloudStatus('error');
+      } finally {
+        if (isMounted) {
+          isInitialCloudLoadDone.current = true;
+        }
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Auto-save to LocalStorage AND auto-sync to Supabase Cloud on every change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.error('Error persisting state:', e);
+    }
+
+    if (!isSupabaseConfigured || !isInitialCloudLoadDone.current) return;
+
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+    }
+
+    setCloudStatus('syncing');
+    syncTimeoutRef.current = setTimeout(async () => {
+      try {
+        await syncAllToSupabase(data);
+        setCloudStatus('synced');
+        setLastSyncedAt(new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }));
+      } catch (err) {
+        console.error('Error syncing to Supabase:', err);
+        setCloudStatus('error');
+      }
+    }, 350);
+
+    return () => {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    };
+  }, [data]);
+
+  const syncNow = async () => {
+    if (!isSupabaseConfigured) {
+      showToast('Supabase no está configurado', 'error');
+      return;
+    }
+    try {
+      setCloudStatus('syncing');
+      await syncAllToSupabase(data);
+      const timeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+      setCloudStatus('synced');
+      setLastSyncedAt(timeStr);
+      showToast('Información subida y sincronizada en la nube de Supabase');
+    } catch (err) {
+      console.error('Manual sync error:', err);
+      setCloudStatus('error');
+      showToast('Error al sincronizar con Supabase. Revisa tu conexión.', 'error');
+    }
   };
 
   // Auth: Login & Logout
@@ -188,6 +344,7 @@ export function AppProvider({ children }) {
       ...prev,
       appointments: prev.appointments.filter(apt => apt.id !== aptId)
     }));
+    deleteRowFromSupabase('appointments', aptId);
     showToast('Cita cancelada/eliminada del registro', 'info');
   };
 
@@ -203,6 +360,8 @@ export function AppProvider({ children }) {
     const created = {
       photoUrl: '',
       clinicalNotes: [],
+      ageUnit: 'años',
+      ageMonths: 0,
       ...newPet,
       id: newPet.id || `pet-${Date.now()}`
     };
@@ -226,11 +385,33 @@ export function AppProvider({ children }) {
       } = fields;
 
       const resolvedName = (petName !== undefined ? petName : petFields.name ?? targetPet.name).trim();
+      const resolvedAgeUnit = petFields.ageUnit || targetPet.ageUnit || 'años';
+
+      let resolvedAgeYears = targetPet.ageYears ?? 1;
+      let resolvedAgeMonths = targetPet.ageMonths ?? 0;
+
+      if (resolvedAgeUnit === 'meses') {
+        const rawMonths = petFields.ageMonths !== undefined && petFields.ageMonths !== ''
+          ? Number(petFields.ageMonths)
+          : (petFields.ageYears !== undefined && petFields.ageYears !== '' ? Number(petFields.ageYears) : (targetPet.ageMonths || targetPet.ageYears || 1));
+        resolvedAgeMonths = rawMonths;
+        resolvedAgeYears = 0;
+      } else {
+        if (petFields.ageYears !== undefined && petFields.ageYears !== '') {
+          resolvedAgeYears = Number(petFields.ageYears);
+        }
+        resolvedAgeMonths = petFields.ageMonths !== undefined && petFields.ageMonths !== ''
+          ? Number(petFields.ageMonths)
+          : 0;
+      }
+
       const updatedPetObj = {
         ...targetPet,
         ...petFields,
         name: resolvedName,
-        ...(petFields.ageYears !== undefined && petFields.ageYears !== '' ? { ageYears: Number(petFields.ageYears) } : {}),
+        ageUnit: resolvedAgeUnit,
+        ageYears: resolvedAgeYears,
+        ageMonths: resolvedAgeMonths,
         ...(petFields.weightKg !== undefined && petFields.weightKg !== '' ? { weightKg: Number(petFields.weightKg) } : {})
       };
 
@@ -401,13 +582,21 @@ export function AppProvider({ children }) {
       clientId = newClient.id;
     }
 
+    const ageUnit = optionalFields.ageUnit || 'años';
+    const isMonths = ageUnit === 'meses';
+    const rawAgeVal = optionalFields.ageYears !== undefined && optionalFields.ageYears !== ''
+      ? Number(optionalFields.ageYears)
+      : (optionalFields.ageMonths !== undefined && optionalFields.ageMonths !== '' ? Number(optionalFields.ageMonths) : 1);
+
     const newPet = {
       id: `pet-${Date.now()}`,
       clientId,
       name: petName.trim(),
       species: optionalFields.species || 'Canino',
       breed: optionalFields.breed || 'Sin especificar',
-      ageYears: optionalFields.ageYears ? Number(optionalFields.ageYears) : 1,
+      ageUnit,
+      ageYears: isMonths ? 0 : rawAgeVal,
+      ageMonths: isMonths ? (optionalFields.ageMonths !== undefined && optionalFields.ageMonths !== '' ? Number(optionalFields.ageMonths) : rawAgeVal) : Number(optionalFields.ageMonths || 0),
       sex: optionalFields.sex || 'Macho',
       weightKg: optionalFields.weightKg ? Number(optionalFields.weightKg) : 0,
       color: optionalFields.color || 'Sin especificar',
@@ -472,12 +661,90 @@ export function AppProvider({ children }) {
     showToast(`Estado de salud del rescate actualizado: ${newStatus}`);
   };
 
-  // Cirugías
+  // Cirugías (con soporte para procedimientos adicionales como vacunas, desparasitación, etc.)
   const addSurgery = (newSurgery) => {
-    const created = { ...newSurgery, id: `surg-${Date.now()}` };
-    setData(prev => ({ ...prev, surgeries: [created, ...prev.surgeries] }));
-    showToast(`Procedimiento quirúrgico registrado: ${created.procedure}`);
+    const cleanAdditional = Array.isArray(newSurgery.additionalProcedures)
+      ? newSurgery.additionalProcedures.map(p => p.trim()).filter(Boolean)
+      : [];
+
+    const created = {
+      ...newSurgery,
+      additionalProcedures: cleanAdditional,
+      id: `surg-${Date.now()}`
+    };
+
+    setData(prev => {
+      let nextVaccinations = prev.vaccinations || [];
+
+      // Si se seleccionó una mascota registrada y se incluyeron vacunas/desparasitaciones en la cirugía,
+      // registrarlas también en la Cartilla Oficial si autoRegisterVaccines está activo
+      if (newSurgery.autoRegisterVaccines !== false && cleanAdditional.length > 0) {
+        const matchedPet = (newSurgery.petId && prev.pets.find(p => p.id === newSurgery.petId)) ||
+          prev.pets.find(p => newSurgery.patientName?.toLowerCase().startsWith(p.name.toLowerCase()));
+
+        if (matchedPet) {
+          const vaccineKeywords = ['vacuna', 'rabia', 'rabies', 'séxtuple', 'sextuple', 'bordetella', 'puppy', 'triple felina', 'desparasit'];
+          const vaccineProcs = cleanAdditional.filter(proc =>
+            vaccineKeywords.some(kw => proc.toLowerCase().includes(kw))
+          );
+
+          if (vaccineProcs.length > 0) {
+            const appliedDate = created.date || new Date().toISOString().split('T')[0];
+            const dueDateObj = new Date(appliedDate + 'T12:00:00');
+            dueDateObj.setFullYear(dueDateObj.getFullYear() + 1);
+            const dueDate = dueDateObj.toISOString().split('T')[0];
+
+            const newVacRecords = vaccineProcs.map((vacName, idx) => ({
+              id: `vac-${Date.now()}-${idx}`,
+              petId: matchedPet.id,
+              petName: matchedPet.name,
+              ownerName: created.ownerName || 'Cliente Registrado',
+              vaccineName: vacName.replace(/^[^\wÁÉÍÓÚáéíóúÑñ]+/, '').trim(),
+              manufacturer: 'Aplicada en Quirófano / Cirugía',
+              lotNumber: `QUIR-${new Date().getFullYear()}`,
+              appliedDate,
+              dueDate,
+              vetName: created.surgeon || 'Dra. María José Mendoza Gutiérrez',
+              licenseNumber: 'CÉD. PROF. 8492019-BC',
+              notes: `Aplicada durante cirugía: ${created.procedure}`,
+              isTravelValid: true
+            }));
+
+            nextVaccinations = [...newVacRecords, ...nextVaccinations];
+          }
+        }
+      }
+
+      return {
+        ...prev,
+        surgeries: [created, ...prev.surgeries],
+        vaccinations: nextVaccinations
+      };
+    });
+
+    const extraLabel = cleanAdditional.length > 0 ? ` (+${cleanAdditional.length} proc. adicionales)` : '';
+    showToast(`Cirugía registrada: ${created.procedure}${extraLabel}`);
     return created;
+  };
+
+  const updateSurgery = (surgeryId, updatedFields) => {
+    const cleanAdditional = Array.isArray(updatedFields.additionalProcedures)
+      ? updatedFields.additionalProcedures.map(p => p.trim()).filter(Boolean)
+      : undefined;
+
+    setData(prev => ({
+      ...prev,
+      surgeries: prev.surgeries.map(s => {
+        if (s.id !== surgeryId) return s;
+        return {
+          ...s,
+          ...updatedFields,
+          ...(cleanAdditional !== undefined ? { additionalProcedures: cleanAdditional } : {})
+        };
+      })
+    }));
+    showToast('Registro quirúrgico y procedimientos actualizados');
+    return { success: true };
   };
 
   const updateSurgeryStatus = (surgeryId, newStatus) => {
@@ -486,6 +753,15 @@ export function AppProvider({ children }) {
       surgeries: prev.surgeries.map(s => s.id === surgeryId ? { ...s, status: newStatus } : s)
     }));
     showToast(`Cirugía actualizada a: ${newStatus}`);
+  };
+
+  const deleteSurgery = (surgeryId) => {
+    setData(prev => ({
+      ...prev,
+      surgeries: prev.surgeries.filter(s => s.id !== surgeryId)
+    }));
+    deleteRowFromSupabase('surgeries', surgeryId);
+    showToast('Registro de cirugía eliminado', 'info');
   };
 
   // Vacunación y Passport to Travel
@@ -589,6 +865,7 @@ export function AppProvider({ children }) {
       ...prev,
       cages: (prev.cages || []).filter(cage => cage.id !== cageId)
     }));
+    deleteRowFromSupabase('cages', cageId);
     showToast('Jaula eliminada del inventario', 'info');
   };
 
@@ -622,10 +899,19 @@ export function AppProvider({ children }) {
     }
   };
 
-  const resetToDefaults = () => {
-    if (window.confirm('¿Seguro que deseas restaurar los datos de demostración de Servicio Veterinario California? Se sobreescribirán los cambios no respaldados.')) {
+  const resetToDefaults = async () => {
+    if (window.confirm('¿Seguro que deseas restaurar los datos de fábrica de Servicio Veterinario California? Se limpiarán los registros no respaldados.')) {
       setData(INITIAL_DATA);
-      showToast('Datos reiniciados a los valores de fábrica de demostración');
+      if (isSupabaseConfigured) {
+        try {
+          setCloudStatus('syncing');
+          await clearAndResetSupabase(INITIAL_DATA);
+          setCloudStatus('synced');
+        } catch (e) {
+          console.error('Error resetting Supabase:', e);
+        }
+      }
+      showToast('Datos reiniciados a los valores limpios de fábrica');
     }
   };
 
@@ -637,6 +923,12 @@ export function AppProvider({ children }) {
         setActiveTab,
         notification,
         showToast,
+        // Cloud Sync Status
+        cloudStatus,
+        lastSyncedAt,
+        syncNow,
+        isSupabaseConfigured,
+        formatPetAge,
         // Authentication
         isAuthenticated,
         currentUser,
@@ -664,7 +956,9 @@ export function AppProvider({ children }) {
         addRescueIntervention,
         updateRescueStatus,
         addSurgery,
+        updateSurgery,
         updateSurgeryStatus,
+        deleteSurgery,
         addVaccination,
         // Cages / Hospitalización
         addCage,

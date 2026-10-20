@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp, formatPetAge } from '../context/AppContext';
 import { 
   Users, 
   UserPlus, 
@@ -107,6 +107,7 @@ export function PatientsAndClients() {
     species: 'Canino',
     breed: '',
     ageYears: '',
+    ageUnit: 'años',
     sex: 'Macho',
     weightKg: '',
     color: '',
@@ -139,6 +140,7 @@ export function PatientsAndClients() {
       species: 'Canino',
       breed: '',
       ageYears: '',
+      ageUnit: 'años',
       sex: 'Macho',
       weightKg: '',
       color: '',
@@ -152,6 +154,7 @@ export function PatientsAndClients() {
 
   const handleOpenEditPet = (pet) => {
     const owner = clients.find(c => c.id === pet.clientId);
+    const isMonths = pet.ageUnit === 'meses' || (pet.ageMonths > 0 && !pet.ageYears);
     setEditingPetId(pet.id);
     setQuickPetForm({
       ownerPhone: owner?.phone || '',
@@ -161,7 +164,8 @@ export function PatientsAndClients() {
       photoUrl: pet.photoUrl || '',
       species: pet.species || 'Canino',
       breed: pet.breed === 'Sin especificar' ? '' : (pet.breed || ''),
-      ageYears: pet.ageYears ?? '',
+      ageYears: isMonths ? (pet.ageMonths ?? pet.ageYears ?? '') : (pet.ageYears ?? ''),
+      ageUnit: isMonths ? 'meses' : 'años',
       sex: pet.sex || 'Macho',
       weightKg: pet.weightKg ?? '',
       color: pet.color === 'Sin especificar' ? '' : (pet.color || ''),
@@ -220,6 +224,9 @@ export function PatientsAndClients() {
       return;
     }
 
+    const isMonths = quickPetForm.ageUnit === 'meses';
+    const numAge = quickPetForm.ageYears !== '' ? Number(quickPetForm.ageYears) : 1;
+
     if (editingPetId) {
       updatePet(editingPetId, {
         ownerPhone: quickPetForm.ownerPhone,
@@ -229,7 +236,9 @@ export function PatientsAndClients() {
         photoUrl: quickPetForm.photoUrl || '',
         species: quickPetForm.species || 'Canino',
         breed: quickPetForm.breed.trim() || 'Sin especificar',
-        ageYears: quickPetForm.ageYears !== '' ? Number(quickPetForm.ageYears) : 1,
+        ageUnit: isMonths ? 'meses' : 'años',
+        ageYears: isMonths ? 0 : numAge,
+        ageMonths: isMonths ? numAge : 0,
         sex: quickPetForm.sex || 'Macho',
         weightKg: quickPetForm.weightKg !== '' ? Number(quickPetForm.weightKg) : 0,
         color: quickPetForm.color.trim() || 'Sin especificar',
@@ -248,7 +257,9 @@ export function PatientsAndClients() {
       photoUrl: quickPetForm.photoUrl || '',
       species: quickPetForm.species || 'Canino',
       breed: quickPetForm.breed || 'Sin especificar',
-      ageYears: quickPetForm.ageYears,
+      ageUnit: isMonths ? 'meses' : 'años',
+      ageYears: isMonths ? 0 : numAge,
+      ageMonths: isMonths ? numAge : 0,
       sex: quickPetForm.sex || 'Macho',
       weightKg: quickPetForm.weightKg,
       color: quickPetForm.color || 'Sin especificar',
@@ -579,7 +590,7 @@ export function PatientsAndClients() {
                   <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-600">
                     <div>
                       <span className="text-slate-400 block text-[10px]">Edad / Peso:</span>
-                      <span className="font-semibold">{pet.ageYears} años &bull; {pet.weightKg} kg</span>
+                      <span className="font-semibold">{formatPetAge(pet)} &bull; {pet.weightKg} kg</span>
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[10px]">Historial Clínico:</span>
@@ -701,7 +712,7 @@ export function PatientsAndClients() {
                       <div key={pet.id} className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs flex items-center justify-between gap-2">
                         <div className="min-w-0">
                           <div className="font-bold text-slate-900 truncate">{pet.name}</div>
-                          <div className="text-[11px] text-slate-500 truncate">{pet.breed} &bull; {pet.ageYears} años</div>
+                          <div className="text-[11px] text-slate-500 truncate">{pet.breed} &bull; {formatPetAge(pet)}</div>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
@@ -916,15 +927,27 @@ export function PatientsAndClients() {
 
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="block font-semibold text-slate-600 mb-1">Edad (Años)</label>
-                        <input
-                          type="number"
-                          step="0.5"
-                          placeholder="Ej. 2"
-                          value={quickPetForm.ageYears}
-                          onChange={(e) => setQuickPetForm(prev => ({ ...prev, ageYears: e.target.value }))}
-                          className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg"
-                        />
+                        <label className="block font-semibold text-slate-600 mb-1">Edad (Años o Meses)</label>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="0"
+                            step={quickPetForm.ageUnit === 'meses' ? '1' : '0.5'}
+                            placeholder={quickPetForm.ageUnit === 'meses' ? 'Ej. 4' : 'Ej. 2'}
+                            value={quickPetForm.ageYears}
+                            onChange={(e) => setQuickPetForm(prev => ({ ...prev, ageYears: e.target.value }))}
+                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg"
+                          />
+                          <select
+                            aria-label="Unidad de edad"
+                            value={quickPetForm.ageUnit}
+                            onChange={(e) => setQuickPetForm(prev => ({ ...prev, ageUnit: e.target.value }))}
+                            className="px-2 py-1.5 bg-amber-50 border border-amber-300 rounded-lg font-bold text-amber-950 shrink-0 cursor-pointer"
+                          >
+                            <option value="años">Años</option>
+                            <option value="meses">Meses</option>
+                          </select>
+                        </div>
                       </div>
                       <div>
                         <label className="block font-semibold text-slate-600 mb-1">Peso (kg)</label>
@@ -1137,7 +1160,7 @@ export function PatientsAndClients() {
         const dossierPet = pets.find(p => p.id === selectedPetForDossier.id) || selectedPetForDossier;
         const dossierOwner = clients.find(c => c.id === dossierPet.clientId);
         const dossierVaccines = vaccinations.filter(v => v.petId === dossierPet.id || v.petName?.toLowerCase() === dossierPet.name.toLowerCase());
-        const dossierSurgeries = surgeries.filter(s => s.petId === dossierPet.id || s.petName?.toLowerCase() === dossierPet.name.toLowerCase());
+        const dossierSurgeries = surgeries.filter(s => s.petId === dossierPet.id || s.petName?.toLowerCase() === dossierPet.name.toLowerCase() || s.patientName?.toLowerCase().startsWith(dossierPet.name.toLowerCase()));
         const dossierCage = cages.find(c => c.currentOccupant?.patientId === dossierPet.id || c.currentOccupant?.patientName?.toLowerCase() === dossierPet.name.toLowerCase());
         const notes = dossierPet.clinicalNotes || [];
         const dossierLabs = dossierPet.labResults || [];
@@ -1201,7 +1224,7 @@ export function PatientsAndClients() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-slate-600">
-                        <span><strong>Edad:</strong> {dossierPet.ageYears} años</span>
+                        <span><strong>Edad:</strong> {formatPetAge(dossierPet)}</span>
                         <span>&bull;</span>
                         <span><strong>Sexo:</strong> {dossierPet.sex}</span>
                         <span>&bull;</span>
@@ -2030,10 +2053,19 @@ export function PatientsAndClients() {
                                 {surg.status}
                               </span>
                             </div>
+                            {Array.isArray(surg.additionalProcedures) && surg.additionalProcedures.length > 0 && (
+                              <div className="flex flex-wrap gap-1 pt-0.5">
+                                {surg.additionalProcedures.map((extra, i) => (
+                                  <span key={i} className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-900 border border-emerald-200">
+                                    + {extra}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                             <div className="text-xs text-slate-600">
                               <div><strong>Fecha:</strong> {surg.date} {surg.time && `&bull; ${surg.time}`}</div>
-                              <div><strong>Quirófano / Sala:</strong> {surg.room || 'Quirófano Principal'}</div>
-                              {surg.notes && <div className="mt-1 text-slate-500 italic">{surg.notes}</div>}
+                              <div><strong>Cirujano:</strong> {surg.surgeon || 'Quirófano Principal'}</div>
+                              {surg.postOpNotes && <div className="mt-1 text-slate-500 italic">{surg.postOpNotes}</div>}
                             </div>
                           </div>
                         ))}
@@ -2164,7 +2196,7 @@ export function PatientsAndClients() {
         const dossierPet = pets.find(p => p.id === selectedPetForDossier.id) || selectedPetForDossier;
         const dossierOwner = clients.find(c => c.id === dossierPet.clientId);
         const dossierVaccines = vaccinations.filter(v => v.petId === dossierPet.id || v.petName?.toLowerCase() === dossierPet.name.toLowerCase());
-        const dossierSurgeries = surgeries.filter(s => s.petId === dossierPet.id || s.petName?.toLowerCase() === dossierPet.name.toLowerCase());
+        const dossierSurgeries = surgeries.filter(s => s.petId === dossierPet.id || s.petName?.toLowerCase() === dossierPet.name.toLowerCase() || s.patientName?.toLowerCase().startsWith(dossierPet.name.toLowerCase()));
         const notes = dossierPet.clinicalNotes || [];
         const dossierLabs = dossierPet.labResults || [];
         const reportFolio = `EXP-${dossierPet.id.replace('pet-', '').toUpperCase()}-${new Date().getFullYear()}`;
@@ -2288,7 +2320,7 @@ export function PatientsAndClients() {
                     </div>
                     <div>
                       <span className="font-bold text-slate-500 block text-[10px]">Edad / Age:</span>
-                      <span className="font-semibold text-slate-800">{dossierPet.ageYears} años</span>
+                      <span className="font-semibold text-slate-800">{formatPetAge(dossierPet)}</span>
                     </div>
                     <div>
                       <span className="font-bold text-slate-500 block text-[10px]">Peso Actual / Weight:</span>
@@ -2453,6 +2485,11 @@ export function PatientsAndClients() {
                     {dossierSurgeries.map((s, idx) => (
                       <div key={idx} className="p-2 rounded-xl border border-slate-200 bg-slate-50 text-[11px]">
                         <div className="font-bold text-slate-900">{s.procedure}</div>
+                        {Array.isArray(s.additionalProcedures) && s.additionalProcedures.length > 0 && (
+                          <div className="text-emerald-800 font-semibold mt-0.5">
+                            + Procedimientos adicionales: {s.additionalProcedures.join(', ')}
+                          </div>
+                        )}
                         <div className="text-slate-600">Fecha: {s.date} {s.time && `&bull; ${s.time}`}</div>
                         <div className="text-slate-500 font-medium">Estado: {s.status}</div>
                       </div>
