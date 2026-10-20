@@ -64,27 +64,9 @@ export function isTestRecord(item) {
     return true;
   }
 
-  const owner = String(
-    item.name || item.clientName || item.ownerName || item.client_name || item.owner_name || ''
-  ).toLowerCase().trim();
-  if (TEST_OWNERS.some(t => owner.includes(t))) return true;
-
-  const vet = String(
-    item.assignedVet || item.surgeon || item.vetName || item.vet_name || item.vet_in_charge || ''
-  ).toLowerCase().trim();
-  if (TEST_DOCTORS.some(d => vet.includes(d))) return true;
-
-  // Si tiene doctor asignado pero NO es ninguno de los 4 doctores oficiales de Servicio Veterinario California
-  if (vet && !isOfficialDoctor(vet)) {
-    return true;
-  }
-
+  // Filtrar solo casos específicos de la plantilla demo original
   const petName = String(item.petName || item.pet_name || item.name || '').toLowerCase().trim();
-  if (
-    (petName.includes('canela') && (owner.includes('carmen') || id === 'pet-1' || id === 'apt-2')) ||
-    (petName.includes('thor') && (owner.includes('mendoza') || id === 'pet-3' || id === 'apt-1')) ||
-    (petName.includes('perrito atropellado sin nombre') || id === 'apt-5')
-  ) {
+  if (petName === 'perrito atropellado sin nombre' || id === 'apt-5') {
     return true;
   }
 
@@ -199,9 +181,11 @@ export function petToRow(p, validClientIds = new Set()) {
     return { ...l, fileUrl: safeFile };
   });
 
+  const clientId = p.clientId && (validClientIds.size === 0 || validClientIds.has(p.clientId)) ? p.clientId : (p.clientId || null);
+
   return {
     id: String(p.id),
-    client_id: p.clientId && validClientIds.has(p.clientId) ? p.clientId : null,
+    client_id: clientId,
     name: p.name || 'Mascota',
     species: p.species || 'Canino',
     breed: p.breed || 'Sin especificar',
@@ -253,14 +237,17 @@ export function rowToPet(r) {
 }
 
 export function appointmentToRow(a, validClientIds = new Set(), validPetIds = new Set()) {
+  const clientId = a.clientId && (validClientIds.size === 0 || validClientIds.has(a.clientId)) ? a.clientId : (a.clientId || null);
+  const petId = a.petId && (validPetIds.size === 0 || validPetIds.has(a.petId)) ? a.petId : (a.petId || null);
+
   return {
     id: String(a.id),
     date: a.date || new Date().toISOString().split('T')[0],
     time: a.timeHour || a.time || '09:00',
-    client_id: a.clientId && validClientIds.has(a.clientId) ? a.clientId : null,
+    client_id: clientId,
     client_name: a.clientName || 'Cliente',
     pet_name: a.petName || (Array.isArray(a.petNames) ? a.petNames.join(', ') : 'Mascota'),
-    pet_id: a.petId && validPetIds.has(a.petId) ? a.petId : null,
+    pet_id: petId,
     phone: a.phone || '',
     service: a.reason || a.service || 'Consulta General',
     status: a.status || 'Pendiente',
@@ -561,54 +548,49 @@ export async function broadcastSync(channel, metadata = {}) {
 // CLOUD SYNC OPERATIONS
 // ============================================================================
 
+async function safeFetchTable(table, orderCol, ascending = false) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      let q = supabase.from(table).select('*');
+      if (orderCol) q = q.order(orderCol, { ascending });
+      const res = await q;
+      if (!res.error) return res.data || [];
+      if (attempt < 2) await new Promise(r => setTimeout(r, 350 * (attempt + 1)));
+      else throw new Error(res.error.message);
+    } catch (err) {
+      if (attempt < 2) await new Promise(r => setTimeout(r, 350 * (attempt + 1)));
+      else throw err;
+    }
+  }
+  return [];
+}
+
 export async function fetchAllFromSupabase() {
   if (!supabase) return null;
 
   const fetchPromise = Promise.all([
-    supabase.from('clients').select('*').order('created_at', { ascending: false }),
-    supabase.from('pets').select('*').order('created_at', { ascending: false }),
-    supabase.from('appointments').select('*').order('created_at', { ascending: false }),
-    supabase.from('cages').select('*').order('code', { ascending: true }),
-    supabase.from('rescues').select('*').order('created_at', { ascending: false }),
-    supabase.from('surgeries').select('*').order('created_at', { ascending: false }),
-    supabase.from('vaccinations').select('*').order('created_at', { ascending: false })
+    safeFetchTable('clients', 'created_at', false),
+    safeFetchTable('pets', 'created_at', false),
+    safeFetchTable('appointments', 'created_at', false),
+    safeFetchTable('cages', 'code', true),
+    safeFetchTable('rescues', 'created_at', false),
+    safeFetchTable('surgeries', 'created_at', false),
+    safeFetchTable('vaccinations', 'created_at', false)
   ]);
 
   const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar con Supabase (14s)')), 14000)
+    setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar con Supabase (25s)')), 25000)
   );
 
   const [
-    clientsRes,
-    petsRes,
-    aptsRes,
-    cagesRes,
-    rescuesRes,
-    surgeriesRes,
-    vacsRes
+    rawClients,
+    rawPets,
+    rawApts,
+    rawCages,
+    rawRescues,
+    rawSurgeries,
+    rawVaccinations
   ] = await Promise.race([fetchPromise, timeoutPromise]);
-
-  const errors = [
-    clientsRes.error,
-    petsRes.error,
-    aptsRes.error,
-    cagesRes.error,
-    rescuesRes.error,
-    surgeriesRes.error,
-    vacsRes.error
-  ].filter(Boolean);
-
-  if (errors.length > 0) {
-    throw new Error(errors.map(e => e.message).join('; '));
-  }
-
-  const rawClients = clientsRes.data || [];
-  const rawPets = petsRes.data || [];
-  const rawApts = aptsRes.data || [];
-  const rawCages = cagesRes.data || [];
-  const rawRescues = rescuesRes.data || [];
-  const rawSurgeries = surgeriesRes.data || [];
-  const rawVaccinations = vacsRes.data || [];
 
   // Purgado automático de seguridad en segundo plano si algún cliente antiguo subió datos de prueba
   const testApts = rawApts.filter(isTestRecord);
@@ -803,7 +785,7 @@ export async function syncAllToSupabase(data) {
   })();
 
   const timeoutPromise = new Promise(resolve =>
-    setTimeout(() => resolve({ success: false, error: 'Tiempo de espera de sincronización agotado (16s)' }), 16000)
+    setTimeout(() => resolve({ success: false, error: 'Tiempo de espera de sincronización agotado (30s)' }), 30000)
   );
 
   return Promise.race([syncPromise, timeoutPromise]);

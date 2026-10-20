@@ -86,12 +86,14 @@ function reconcileCollection(localArr = [], cloudArr = []) {
     if (item && item.id && !isTestRecord(item)) map.set(item.id, item);
   });
 
-  // Si hubo registros creados localmente mientras no había internet (offline), preservarlos siempre que no sean de prueba
+  // Preservar registros locales que aún no existan en la nube O que tengan cambios pendientes de sincronización
   (localArr || []).forEach(localItem => {
-    if (localItem && localItem.id && localItem._pendingSync && !isTestRecord(localItem)) {
+    if (localItem && localItem.id && !isTestRecord(localItem)) {
       if (!map.has(localItem.id)) {
+        // Creado localmente en este dispositivo y aún no reflejado en la nube: no borrar
         map.set(localItem.id, localItem);
-      } else {
+      } else if (localItem._pendingSync) {
+        // Editado localmente con cambios pendientes: fusionar priorizando cambios locales
         map.set(localItem.id, { ...map.get(localItem.id), ...localItem });
       }
     }
@@ -289,7 +291,12 @@ export function AppProvider({ children }) {
             const nextList = exists
               ? currentList.map(i => i.id === payload.item.id ? { ...i, ...payload.item } : i)
               : [payload.item, ...currentList];
-            const next = { ...prev, [tableKey]: nextList };
+            const normalizedList = tableKey === 'cages'
+              ? normalizeAndDeduplicateCages(nextList)
+              : tableKey === 'rescues'
+              ? normalizeAndDeduplicateRescues(nextList)
+              : nextList;
+            const next = { ...prev, [tableKey]: normalizedList };
             safeSaveLocalStorage(STORAGE_KEY, next);
             return next;
           });
@@ -372,6 +379,7 @@ export function AppProvider({ children }) {
   // Comprobación y subida inmediata por cada modificación individual
   const verifyAndUploadDirect = async (table, item, saveFn) => {
     if (!isSupabaseConfigured) return;
+    lastLocalEditAtRef.current = Date.now();
     setCloudStatus('syncing');
 
     try {
@@ -388,14 +396,17 @@ export function AppProvider({ children }) {
           deviceId: deviceIdRef.current,
           time: timeStr
         });
+        return res;
       } else {
         console.warn(`Sync individual de ${table} reportó aviso:`, res?.error);
         setCloudStatus('error');
         showToast(`Aviso de nube al guardar en ${table}: ${res?.error || 'Revisa conexión'}`, 'error');
+        return res;
       }
     } catch (err) {
       console.error(`Error en subida inmediata de ${table}:`, err);
       setCloudStatus('error');
+      return { success: false, error: err.message };
     }
   };
 
@@ -757,14 +768,16 @@ export function AppProvider({ children }) {
 
     showToast('Datos de la mascota actualizados con éxito');
 
-    if (clientToUpload) {
-      verifyAndUploadDirect('clients', clientToUpload, () => saveClientDirect(clientToUpload));
-    }
-    if (petToUpload) {
-      const validClientIds = new Set((data.clients || []).map(c => c.id));
-      if (clientToUpload) validClientIds.add(clientToUpload.id);
-      verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
-    }
+    (async () => {
+      if (clientToUpload) {
+        await verifyAndUploadDirect('clients', clientToUpload, () => saveClientDirect(clientToUpload));
+      }
+      if (petToUpload) {
+        const validClientIds = new Set((data.clients || []).map(c => c.id));
+        if (clientToUpload) validClientIds.add(clientToUpload.id);
+        await verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
+      }
+    })();
   };
 
   const addClinicalNote = (petId, note) => {
@@ -939,11 +952,13 @@ export function AppProvider({ children }) {
     showToast(`¡Mascota "${newPet.name}" y dueño "${ownerName}" guardados exitosamente!`);
 
     // Subida y comprobación directa e inmediata a Supabase
-    if (newClientToUpload) {
-      verifyAndUploadDirect('clients', newClientToUpload, () => saveClientDirect(newClientToUpload));
-    }
-    const validClientIds = new Set(updatedClients.map(c => c.id));
-    verifyAndUploadDirect('pets', newPet, () => savePetDirect(newPet, validClientIds));
+    (async () => {
+      if (newClientToUpload) {
+        await verifyAndUploadDirect('clients', newClientToUpload, () => saveClientDirect(newClientToUpload));
+      }
+      const validClientIds = new Set(updatedClients.map(c => c.id));
+      await verifyAndUploadDirect('pets', newPet, () => savePetDirect(newPet, validClientIds));
+    })();
 
     return newPet;
   };
