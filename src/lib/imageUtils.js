@@ -1,86 +1,158 @@
 /**
- * Utilidad de compresión de imágenes en el navegador.
+ * Utilidad de compresión y optimización de imágenes en el navegador.
+ * 
  * Evita que fotos de alta resolución tomadas con celulares (3MB - 12MB)
- * saturen LocalStorage (límite 5MB) o provoquen timeouts y errores en Supabase.
+ * saturen LocalStorage (límite 5MB) o provoquen timeouts, error 413 o TypeError: terminated en Supabase.
  */
 
-export async function compressImageFile(file, maxWidth = 800, maxHeight = 800, quality = 0.75) {
-  if (!file) return null;
+// Límite máximo estricto para PDFs en base64 (350 KB)
+export const MAX_PDF_BYTES = 350 * 1024;
 
-  // Si no es imagen (ej. PDF de laboratorio), convertir a base64 directo
-  if (!file.type.startsWith('image/')) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-
-  return new Promise((resolve) => {
+/**
+ * Lee un archivo como DataURL (promesa segura)
+ */
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-
-        if (width > maxWidth || height > maxHeight) {
-          const ratio = Math.min(maxWidth / width, maxHeight / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // Comprime a JPEG de 75% de calidad (tamaño típico: 25KB - 55KB)
-        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-        resolve(compressedBase64);
-      };
-      img.onerror = () => {
-        resolve(e.target.result);
-      };
-      img.src = e.target.result;
-    };
-    reader.onerror = () => resolve(null);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo seleccionado.'));
     reader.readAsDataURL(file);
   });
 }
 
 /**
- * Comprime un string base64 existente si excede cierto tamaño
+ * Carga una imagen HTML a partir de un DataURL
  */
-export async function compressBase64Image(dataUrl, maxWidth = 800, maxHeight = 800, quality = 0.75) {
+function loadImageFromDataUrl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('No se pudo decodificar la imagen. Si usas iPhone, asegúrate de tomar la foto directamente o usar formato JPG o PNG.'));
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * Renderiza una imagen a canvas y exporta en JPEG con fondo blanco para transparencia
+ */
+function renderCanvasToJpeg(img, targetWidth, targetHeight, quality) {
+  let width = img.naturalWidth || img.width;
+  let height = img.naturalHeight || img.height;
+
+  if (width <= 0 || height <= 0) {
+    throw new Error('Dimensiones de imagen inválidas');
+  }
+
+  if (width > targetWidth || height > targetHeight) {
+    const ratio = Math.min(targetWidth / width, targetHeight / height);
+    width = Math.max(1, Math.round(width * ratio));
+    height = Math.max(1, Math.round(height * ratio));
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('No se pudo inicializar el motor de renderizado 2D');
+
+  // Fondo blanco para evitar fondos negros en PNG transparentes al exportar a JPEG
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  ctx.drawImage(img, 0, 0, width, height);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+/**
+ * Comprime un archivo de imagen asegurando que nunca exceda el presupuesto de bytes (multi-pass)
+ */
+export async function compressImageFile(file, maxWidth = 450, maxHeight = 450, quality = 0.70, maxChars = 45000) {
+  if (!file) return null;
+
+  // Si no es tipo imagen, validar extensión
+  const isImage = file.type?.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(file.name || '');
+  if (!isImage) {
+    throw new Error('El archivo seleccionado no es una imagen válida.');
+  }
+
+  const rawDataUrl = await readFileAsDataUrl(file);
+  const img = await loadImageFromDataUrl(rawDataUrl);
+
+  // Pase 1: dimensiones y calidad deseadas
+  let result = renderCanvasToJpeg(img, maxWidth, maxHeight, quality);
+
+  // Pase 2: si excede el presupuesto seguro (~30KB-35KB), reducir dimensiones y calidad
+  if (result.length > maxChars) {
+    const pass2Width = Math.round(maxWidth * 0.8);
+    const pass2Height = Math.round(maxHeight * 0.8);
+    const pass2Quality = Math.max(0.50, quality - 0.12);
+    result = renderCanvasToJpeg(img, pass2Width, pass2Height, pass2Quality);
+  }
+
+  // Pase 3: último pase ultra-ligero de emergencia si aún excede
+  if (result.length > maxChars) {
+    const pass3Width = Math.round(maxWidth * 0.65);
+    const pass3Height = Math.round(maxHeight * 0.65);
+    result = renderCanvasToJpeg(img, pass3Width, pass3Height, 0.45);
+  }
+
+  return result;
+}
+
+/**
+ * Optimizador específico para fotos de perfil / mascotas / pasaporte.
+ * Tamaño objetivo: 15KB - 30KB (ideal para sincronización instantánea y LocalStorage).
+ */
+export async function compressPetPhoto(file) {
+  // Max 400x400 px, calidad 0.70, tope máximo de 42,000 caracteres (~30 KB)
+  return compressImageFile(file, 400, 400, 0.70, 42000);
+}
+
+/**
+ * Optimizador específico para fotos de estudios de laboratorio / rayos X / recetas.
+ * Tamaño objetivo: 35KB - 60KB (preserva legibilidad de textos y números).
+ */
+export async function compressLabImage(file) {
+  // Max 1000x1000 px, calidad 0.68, tope máximo de 80,000 caracteres (~58 KB)
+  return compressImageFile(file, 1000, 1000, 0.68, 80000);
+}
+
+/**
+ * Valida y lee un PDF para laboratorio, asegurando que no exceda el límite seguro de 350KB.
+ */
+export async function validateAndReadLabPdf(file) {
+  if (!file) throw new Error('No se proporcionó ningún archivo');
+  
+  if (file.size > MAX_PDF_BYTES) {
+    const currentKb = Math.round(file.size / 1024);
+    throw new Error(`El archivo PDF pesa ${currentKb} KB. El límite máximo para sincronización fluida es de 350 KB.\n\nSugerencia: Si es un estudio impreso, tómale una foto con el celular (se optimiza automáticamente a alta nitidez en menos de 40 KB).`);
+  }
+
+  return readFileAsDataUrl(file);
+}
+
+/**
+ * Comprime un string base64 existente si excede 45KB
+ */
+export async function compressBase64Image(dataUrl, maxWidth = 400, maxHeight = 400, quality = 0.70) {
   if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
     return dataUrl;
   }
-  // Si ya es pequeño (< 70KB de caracteres), dejarlo como está
-  if (dataUrl.length < 90000) return dataUrl;
+  // Si ya es pequeño (< 45KB de caracteres), dejarlo intacto
+  if (dataUrl.length <= 45000) return dataUrl;
 
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      let width = img.width;
-      let height = img.height;
-
-      if (width > maxWidth || height > maxHeight) {
-        const ratio = Math.min(maxWidth / width, maxHeight / height);
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-      }
-
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', quality));
-    };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
+  try {
+    const img = await loadImageFromDataUrl(dataUrl);
+    let result = renderCanvasToJpeg(img, maxWidth, maxHeight, quality);
+    if (result.length > 45000) {
+      result = renderCanvasToJpeg(img, Math.round(maxWidth * 0.75), Math.round(maxHeight * 0.75), 0.55);
+    }
+    return result;
+  } catch (err) {
+    console.warn('No se pudo recomprimir dataURL existente:', err);
+    return dataUrl.length > 60000 ? '' : dataUrl;
+  }
 }

@@ -687,6 +687,11 @@ export function AppProvider({ children }) {
           : 0;
       }
 
+      if (petFields.photoUrl && petFields.photoUrl.length > 55000) {
+        console.warn('Foto de mascota excede 55KB, descartada para evitar error de sincronización');
+        petFields.photoUrl = '';
+      }
+
       const updatedPetObj = {
         ...targetPet,
         ...petFields,
@@ -810,7 +815,7 @@ export function AppProvider({ children }) {
       title: result.title || 'Resultado de Laboratorio',
       category: result.category || 'Análisis Clínico',
       fileType: result.fileType || 'image', // 'image' | 'pdf'
-      fileUrl: result.fileUrl || '',
+      fileUrl: (result.fileUrl && result.fileUrl.length <= 85000) ? result.fileUrl : '',
       fileName: result.fileName || 'estudio_laboratorio',
       notes: result.notes || '',
       performedBy: result.performedBy || 'Laboratorio Clínico California'
@@ -920,7 +925,7 @@ export function AppProvider({ children }) {
       color: optionalFields.color || 'Sin especificar',
       allergies: optionalFields.allergies || 'Ninguna conocida',
       microchip: optionalFields.microchip || '',
-      photoUrl: optionalFields.photoUrl || '',
+      photoUrl: (optionalFields.photoUrl && optionalFields.photoUrl.length <= 55000) ? optionalFields.photoUrl : '',
       clinicalNotes: optionalFields.clinicalNotes || [],
       notes: optionalFields.notes || ''
     };

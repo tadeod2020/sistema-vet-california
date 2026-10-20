@@ -20,10 +20,11 @@ import {
   CheckSquare,
   Square,
   Sparkles,
-  Pencil
+  Pencil,
+  Loader2
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
-import { compressImageFile } from '../lib/imageUtils';
+import { compressPetPhoto } from '../lib/imageUtils';
 
 const CLINIC_SERVICES = [
   "Histopatológia", "Consultas",
@@ -92,13 +93,14 @@ const OFFICIAL_VACCINES = [
 ];
 
 export function VaccinationPassport() {
-  const { pets, clients, vaccinations, addVaccination, selectedPetIdForPassport, updatePet } = useApp();
+  const { pets, clients, vaccinations, addVaccination, selectedPetIdForPassport, updatePet, showToast } = useApp();
 
   const [selectedPetId, setSelectedPetId] = useState(() => selectedPetIdForPassport || (pets.length > 0 ? pets[0].id : null));
   const [activeCarnetPage, setActiveCarnetPage] = useState('spread'); // 'spread' (interior completo) | 'cover' | 'vaccines'
   const [isVacModalOpen, setIsVacModalOpen] = useState(false);
   const [isEditPetModalOpen, setIsEditPetModalOpen] = useState(false);
   const [petPhotoUrl, setPetPhotoUrl] = useState({});
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
 
   React.useEffect(() => {
     if (selectedPetIdForPassport) {
@@ -203,16 +205,23 @@ export function VaccinationPassport() {
 
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
-    if (file && selectedPet) {
-      try {
-        const compressed = await compressImageFile(file, 800, 800, 0.75);
+    if (!file || !selectedPet) return;
+    setIsCompressingPhoto(true);
+    try {
+      const compressed = await compressPetPhoto(file);
+      if (compressed) {
         setPetPhotoUrl(prev => ({ ...prev, [selectedPet.id]: compressed }));
         if (updatePet) {
           updatePet(selectedPet.id, { photoUrl: compressed });
         }
-      } catch (err) {
-        console.error('Error al comprimir foto de pasaporte:', err);
+        showToast('Foto del carnet optimizada y guardada');
       }
+    } catch (err) {
+      console.error('Error al procesar foto de pasaporte:', err);
+      alert(err.message || 'No se pudo procesar la foto de la mascota.');
+    } finally {
+      setIsCompressingPhoto(false);
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -515,12 +524,18 @@ export function VaccinationPassport() {
 
                 {/* RIGHT BOX: BIG ROUNDED RECTANGLE FOR PET PHOTO */}
                 <div className="md:col-span-5 rounded-2xl border-2 border-slate-900 p-4 flex flex-col items-center justify-center min-h-[300px] relative bg-slate-50/50 group">
-                  {(petPhotoUrl[selectedPet.id] || selectedPet.photoUrl) ? (
+                  {isCompressingPhoto ? (
+                    <div className="flex flex-col items-center justify-center py-10 space-y-3 text-center">
+                      <Loader2 className="w-10 h-10 text-amber-500 animate-spin" />
+                      <div className="text-xs font-bold text-slate-800">Optimizando fotografía...</div>
+                      <div className="text-[10px] text-slate-500">Comprimiendo imagen para sincronización instantánea</div>
+                    </div>
+                  ) : (petPhotoUrl[selectedPet.id] || selectedPet.photoUrl) ? (
                     <div className="w-full h-full rounded-xl overflow-hidden flex flex-col items-center justify-center">
                       <img 
                         src={petPhotoUrl[selectedPet.id] || selectedPet.photoUrl} 
                         alt={selectedPet.name} 
-                        className="w-full h-64 object-cover rounded-xl shadow-xs"
+                        className="w-full h-64 object-cover rounded-xl shadow-xs" 
                       />
                       <label className="mt-2 text-[10px] font-bold text-slate-500 hover:text-slate-800 cursor-pointer flex items-center gap-1">
                         <Camera className="w-3 h-3" /> Cambiar Fotografía

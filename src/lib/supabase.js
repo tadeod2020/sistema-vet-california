@@ -185,13 +185,15 @@ export function petToRow(p, validClientIds = new Set()) {
 
   // Evita payloads descomunales que hagan fallar la API de Supabase con error 413 o TypeError: terminated
   let safePhotoUrl = p.photoUrl || '';
-  if (safePhotoUrl && safePhotoUrl.length > 120000) {
+  if (safePhotoUrl && safePhotoUrl.length > 55000) {
+    console.warn(`[Supabase Guard] Foto de mascota "${p.name}" (${p.id}) excede límite seguro (${safePhotoUrl.length} chars). Se descarta para proteger la sincronización.`);
     safePhotoUrl = '';
   }
 
   const safeLabResults = (Array.isArray(p.labResults) ? p.labResults : []).map(l => {
     let safeFile = l.fileUrl || '';
-    if (safeFile && safeFile.length > 120000) {
+    if (safeFile && safeFile.length > 85000) {
+      console.warn(`[Supabase Guard] Estudio de laboratorio "${l.title}" en mascota "${p.name}" excede límite de sync (${safeFile.length} chars).`);
       safeFile = '';
     }
     return { ...l, fileUrl: safeFile };

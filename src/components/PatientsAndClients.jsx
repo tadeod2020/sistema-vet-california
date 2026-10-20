@@ -37,10 +37,11 @@ import {
   Eye,
   Download,
   FileUp,
-  Pencil
+  Pencil,
+  Loader2
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
-import { compressImageFile } from '../lib/imageUtils';
+import { compressPetPhoto, compressLabImage, validateAndReadLabPdf, compressImageFile } from '../lib/imageUtils';
 
 export function PatientsAndClients() {
   const { 
@@ -54,6 +55,7 @@ export function PatientsAndClients() {
     addLabResult,
     deleteLabResult,
     openPetPassport,
+    showToast,
     vaccinations = [],
     surgeries = [],
     cages = [],
@@ -63,6 +65,8 @@ export function PatientsAndClients() {
   const [activeView, setActiveView] = useState('pets'); // 'pets' | 'clients'
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all'); // all | frequent | regular
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
+  const [isProcessingLabFile, setIsProcessingLabFile] = useState(false);
 
   // Modal states
   const [isQuickPetModalOpen, setIsQuickPetModalOpen] = useState(false);
@@ -180,26 +184,40 @@ export function PatientsAndClients() {
 
   const handleQuickPetPhoto = async (e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      try {
-        const compressed = await compressImageFile(file, 800, 800, 0.75);
+    if (!file) return;
+    setIsCompressingPhoto(true);
+    try {
+      const compressed = await compressPetPhoto(file);
+      if (compressed) {
         setQuickPetForm(prev => ({ ...prev, photoUrl: compressed }));
-      } catch (err) {
-        console.error('Error al comprimir foto:', err);
+        showToast('Foto optimizada y lista para guardar');
       }
+    } catch (err) {
+      console.error('Error al optimizar foto:', err);
+      alert(err.message || 'No se pudo procesar la foto de la mascota. Intenta con formato JPG o PNG.');
+    } finally {
+      setIsCompressingPhoto(false);
+      if (e.target) e.target.value = '';
     }
   };
 
   const handleUpdateDossierPhoto = async (petId, e) => {
     const file = e.target.files?.[0];
-    if (file && petId) {
-      try {
-        const compressed = await compressImageFile(file, 800, 800, 0.75);
+    if (!file || !petId) return;
+    setIsCompressingPhoto(true);
+    try {
+      const compressed = await compressPetPhoto(file);
+      if (compressed) {
         updatePet(petId, { photoUrl: compressed });
         setSelectedPetForDossier(prev => (prev ? { ...prev, photoUrl: compressed } : prev));
-      } catch (err) {
-        console.error('Error al comprimir foto de expediente:', err);
+        showToast('Foto del expediente actualizada correctamente');
       }
+    } catch (err) {
+      console.error('Error al actualizar foto de expediente:', err);
+      alert(err.message || 'No se pudo procesar la foto de la mascota.');
+    } finally {
+      setIsCompressingPhoto(false);
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -311,42 +329,44 @@ export function PatientsAndClients() {
     if (!file) return;
 
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    const isImage = file.type.startsWith('image/');
+    const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp)$/i.test(file.name);
 
     if (!isPdf && !isImage) {
       alert('Por favor selecciona una imagen (JPG, PNG, WEBP) o un documento PDF.');
       return;
     }
 
-    if (isImage) {
-      try {
-        const compressed = await compressImageFile(file, 1000, 1000, 0.72);
+    setIsProcessingLabFile(true);
+    try {
+      if (isImage) {
+        const compressed = await compressLabImage(file);
+        if (compressed) {
+          setLabForm(prev => ({
+            ...prev,
+            fileUrl: compressed,
+            fileName: file.name,
+            fileType: 'image',
+            title: prev.title || file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
+          }));
+          showToast('Estudio fotográfico optimizado');
+        }
+      } else {
+        const dataUrl = await validateAndReadLabPdf(file);
         setLabForm(prev => ({
           ...prev,
-          fileUrl: compressed,
-          fileName: file.name,
-          fileType: 'image',
-          title: prev.title || file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
-        }));
-      } catch (err) {
-        console.error('Error al comprimir imagen de laboratorio:', err);
-      }
-    } else {
-      if (file.size > 2 * 1024 * 1024) {
-        alert('El documento PDF es demasiado pesado (máximo 2MB).');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setLabForm(prev => ({
-          ...prev,
-          fileUrl: reader.result,
+          fileUrl: dataUrl,
           fileName: file.name,
           fileType: 'pdf',
           title: prev.title || file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
         }));
-      };
-      reader.readAsDataURL(file);
+        showToast('Documento PDF verificado y adjuntado');
+      }
+    } catch (err) {
+      console.error('Error al procesar archivo de laboratorio:', err);
+      alert(err.message || 'No se pudo procesar el archivo seleccionado.');
+    } finally {
+      setIsProcessingLabFile(false);
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -894,12 +914,22 @@ export function PatientsAndClients() {
                           Foto del Perro / Mascota (Opcional)
                         </label>
                         <div className="flex items-center gap-2">
-                          <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-amber-950 text-xs font-bold rounded-lg cursor-pointer shadow-xs transition-all">
-                            <Camera className="w-3.5 h-3.5" />
-                            {quickPetForm.photoUrl ? 'Cambiar Foto' : 'Subir Foto'}
+                          <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 ${isCompressingPhoto ? 'bg-amber-200 cursor-wait' : 'bg-amber-400 hover:bg-amber-500 cursor-pointer'} text-amber-950 text-xs font-bold rounded-lg shadow-xs transition-all`}>
+                            {isCompressingPhoto ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                Optimizando...
+                              </>
+                            ) : (
+                              <>
+                                <Camera className="w-3.5 h-3.5" />
+                                {quickPetForm.photoUrl ? 'Cambiar Foto' : 'Subir Foto'}
+                              </>
+                            )}
                             <input
                               type="file"
                               accept="image/*"
+                              disabled={isCompressingPhoto}
                               onChange={handleQuickPetPhoto}
                               className="hidden"
                             />
@@ -1208,13 +1238,18 @@ export function PatientsAndClients() {
                         )}
                       </div>
                       <label 
-                        className="absolute bottom-0 right-0 p-1.5 bg-slate-900/80 hover:bg-slate-900 text-white rounded-xl shadow-md cursor-pointer transition-all"
-                        title="Cambiar fotografía"
+                        className={`absolute bottom-0 right-0 p-1.5 ${isCompressingPhoto ? 'bg-slate-700 cursor-wait' : 'bg-slate-900/80 hover:bg-slate-900 cursor-pointer'} text-white rounded-xl shadow-md transition-all`}
+                        title={isCompressingPhoto ? "Optimizando fotografía..." : "Cambiar fotografía"}
                       >
-                        <Camera className="w-3.5 h-3.5 text-amber-400" />
+                        {isCompressingPhoto ? (
+                          <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                        ) : (
+                          <Camera className="w-3.5 h-3.5 text-amber-400" />
+                        )}
                         <input 
                           type="file" 
                           accept="image/*" 
+                          disabled={isCompressingPhoto}
                           onChange={(e) => handleUpdateDossierPhoto(dossierPet.id, e)} 
                           className="hidden" 
                         />
@@ -1744,7 +1779,13 @@ export function PatientsAndClients() {
                         <div>
                           <label className="block font-bold text-slate-800 mb-1">Archivo de Resultado (Foto JPG/PNG o Documento PDF) *</label>
                           <div className="border-2 border-dashed border-blue-300 rounded-2xl p-4 bg-white/80 hover:bg-white transition-all text-center">
-                            {labForm.fileUrl ? (
+                            {isProcessingLabFile ? (
+                              <div className="flex flex-col items-center justify-center py-6 space-y-2">
+                                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                                <span className="font-bold text-blue-900 text-xs">Optimizando y procesando archivo...</span>
+                                <span className="text-[11px] text-slate-500">Comprimiendo imagen para sincronización instantánea</span>
+                              </div>
+                            ) : labForm.fileUrl ? (
                               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-2 bg-blue-50/50 rounded-xl border border-blue-200">
                                 <div className="flex items-center gap-3">
                                   {labForm.fileType === 'pdf' ? (
@@ -1782,7 +1823,7 @@ export function PatientsAndClients() {
                                 </div>
                                 <div>
                                   <span className="font-bold text-blue-900 text-xs hover:underline">Haz clic para seleccionar foto o PDF</span>
-                                  <p className="text-[11px] text-slate-500 mt-0.5">Formatos admitidos: JPG, PNG, WEBP, PDF (Hasta 15MB)</p>
+                                  <p className="text-[11px] text-slate-500 mt-0.5">Formatos admitidos: JPG, PNG, WEBP (fotos optimizadas automáticamente) o PDF (hasta 350KB)</p>
                                 </div>
                                 <input 
                                   type="file" 
