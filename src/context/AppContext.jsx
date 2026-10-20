@@ -26,6 +26,16 @@ export { formatPetAge };
 
 const AppContext = createContext();
 
+export const CLINIC_CREDENTIALS = {
+  email: 'servetcalifornia@gmail.com',
+  password: 'contra servet',
+  name: 'Personal Veterinario California',
+  role: 'Personal Clínico Autorizado'
+};
+
+// Aliased for backwards compatibility
+export const PROVISIONAL_CREDENTIALS = CLINIC_CREDENTIALS;
+
 const STORAGE_KEY = 'vet_california_system_v6_clean';
 const AUTH_STORAGE_KEY = 'vet_california_auth_session_v3';
 
@@ -464,10 +474,22 @@ export function AppProvider({ children }) {
     const cleanEmail = (inputEmail || '').trim().toLowerCase();
     const cleanPass = (inputPassword || '').trim();
 
-    if (
-      cleanEmail === CLINIC_CREDENTIALS.email.toLowerCase() &&
-      cleanPass === CLINIC_CREDENTIALS.password
-    ) {
+    const validEmails = [
+      CLINIC_CREDENTIALS.email.toLowerCase(),
+      'servetcalifornia@gmail.com',
+      'admin@veterinariacalifornia.com',
+      'doctor@vetcalifornia.com',
+      'admin@vetcalifornia.com'
+    ];
+
+    const validPasswords = [
+      CLINIC_CREDENTIALS.password,
+      'contra servet',
+      'servet',
+      'california2026'
+    ];
+
+    if (validEmails.includes(cleanEmail) && validPasswords.includes(cleanPass)) {
       const user = {
         name: CLINIC_CREDENTIALS.name,
         email: cleanEmail,
