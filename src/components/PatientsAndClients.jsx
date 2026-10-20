@@ -40,6 +40,7 @@ import {
   Pencil
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
+import { compressImageFile } from '../lib/imageUtils';
 
 export function PatientsAndClients() {
   const { 
@@ -177,27 +178,28 @@ export function PatientsAndClients() {
     setIsQuickPetModalOpen(true);
   };
 
-  const handleQuickPetPhoto = (e) => {
-    const file = e.target.files[0];
+  const handleQuickPetPhoto = async (e) => {
+    const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setQuickPetForm(prev => ({ ...prev, photoUrl: reader.result }));
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImageFile(file, 800, 800, 0.75);
+        setQuickPetForm(prev => ({ ...prev, photoUrl: compressed }));
+      } catch (err) {
+        console.error('Error al comprimir foto:', err);
+      }
     }
   };
 
-  const handleUpdateDossierPhoto = (petId, e) => {
-    const file = e.target.files[0];
+  const handleUpdateDossierPhoto = async (petId, e) => {
+    const file = e.target.files?.[0];
     if (file && petId) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result;
-        updatePet(petId, { photoUrl: base64 });
-        setSelectedPetForDossier(prev => (prev ? { ...prev, photoUrl: base64 } : prev));
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImageFile(file, 800, 800, 0.75);
+        updatePet(petId, { photoUrl: compressed });
+        setSelectedPetForDossier(prev => (prev ? { ...prev, photoUrl: compressed } : prev));
+      } catch (err) {
+        console.error('Error al comprimir foto de expediente:', err);
+      }
     }
   };
 
@@ -304,8 +306,8 @@ export function PatientsAndClients() {
     });
   };
 
-  const handleLabFileUpload = (e) => {
-    const file = e.target.files[0];
+  const handleLabFileUpload = async (e) => {
+    const file = e.target.files?.[0];
     if (!file) return;
 
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
@@ -316,17 +318,36 @@ export function PatientsAndClients() {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setLabForm(prev => ({
-        ...prev,
-        fileUrl: reader.result,
-        fileName: file.name,
-        fileType: isPdf ? 'pdf' : 'image',
-        title: prev.title || file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
-      }));
-    };
-    reader.readAsDataURL(file);
+    if (isImage) {
+      try {
+        const compressed = await compressImageFile(file, 1000, 1000, 0.72);
+        setLabForm(prev => ({
+          ...prev,
+          fileUrl: compressed,
+          fileName: file.name,
+          fileType: 'image',
+          title: prev.title || file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
+        }));
+      } catch (err) {
+        console.error('Error al comprimir imagen de laboratorio:', err);
+      }
+    } else {
+      if (file.size > 2 * 1024 * 1024) {
+        alert('El documento PDF es demasiado pesado (máximo 2MB).');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLabForm(prev => ({
+          ...prev,
+          fileUrl: reader.result,
+          fileName: file.name,
+          fileType: 'pdf',
+          title: prev.title || file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleAddLabSubmit = (e) => {

@@ -23,6 +23,7 @@ import {
   Pencil
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
+import { compressImageFile } from '../lib/imageUtils';
 
 const CLINIC_SERVICES = [
   "Histopatológia", "Consultas",
@@ -200,18 +201,18 @@ export function VaccinationPassport() {
     setIsVacModalOpen(false);
   };
 
-  const handlePhotoUpload = (e) => {
-    const file = e.target.files[0];
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
     if (file && selectedPet) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result;
-        setPetPhotoUrl(prev => ({ ...prev, [selectedPet.id]: base64 }));
+      try {
+        const compressed = await compressImageFile(file, 800, 800, 0.75);
+        setPetPhotoUrl(prev => ({ ...prev, [selectedPet.id]: compressed }));
         if (updatePet) {
-          updatePet(selectedPet.id, { photoUrl: base64 });
+          updatePet(selectedPet.id, { photoUrl: compressed });
         }
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Error al comprimir foto de pasaporte:', err);
+      }
     }
   };
 

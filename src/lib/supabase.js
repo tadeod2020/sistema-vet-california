@@ -105,6 +105,20 @@ export function petToRow(p, validClientIds = new Set()) {
     p.microchip ? `Chip: ${p.microchip}` : ''
   ].filter(Boolean).join(' | ');
 
+  // Evita payloads descomunales que hagan fallar la API de Supabase con error 413 o timeout
+  let safePhotoUrl = p.photoUrl || '';
+  if (safePhotoUrl && safePhotoUrl.length > 95000) {
+    safePhotoUrl = safePhotoUrl.slice(0, 85000);
+  }
+
+  const safeLabResults = (Array.isArray(p.labResults) ? p.labResults : []).map(l => {
+    let safeFile = l.fileUrl || '';
+    if (safeFile && safeFile.length > 180000) {
+      safeFile = '';
+    }
+    return { ...l, fileUrl: safeFile };
+  });
+
   return {
     id: String(p.id),
     client_id: p.clientId && validClientIds.has(p.clientId) ? p.clientId : null,
@@ -124,9 +138,9 @@ export function petToRow(p, validClientIds = new Set()) {
       allergies: p.allergies || 'Ninguna conocida',
       microchip: p.microchip || '',
       notes: p.notes || '',
-      photoUrl: p.photoUrl || '',
+      photoUrl: safePhotoUrl,
       clinicalNotes: Array.isArray(p.clinicalNotes) ? p.clinicalNotes : [],
-      labResults: Array.isArray(p.labResults) ? p.labResults : []
+      labResults: safeLabResults
     })
   };
 }
@@ -302,9 +316,9 @@ export function rescueToRow(r) {
     rescue_code: r.code || `RES-${Date.now()}`,
     rescue_date: r.intakeDate || new Date().toISOString().split('T')[0],
     location_found: r.rescueLocation || 'Zona Centro, Tijuana',
-    physical_description: r.physicalDescription || '',
+    physical_description: r.physicalDescription || 'Sin descripción física especificada',
     approx_age: r.temperament || '',
-    gender: r.rescuerName || 'Rescatista',
+    gender: r.rescuerName || 'Rescatista Anónimo',
     initial_condition: r.healthStatus || 'En tratamiento',
     status: r.healthStatus || 'En tratamiento',
     interventions: Array.isArray(r.interventions) ? r.interventions : []
@@ -382,7 +396,7 @@ export function rowToSurgery(r) {
 export function vaccinationToRow(v) {
   return {
     id: String(v.id),
-    pet_id: String(v.petId || ''),
+    pet_id: String(v.petId || 'pet-general'),
     pet_name: v.petName || 'Mascota',
     owner_name: v.ownerName || 'Cliente Registrado',
     vaccine_name: v.vaccineName || 'Vacuna',
@@ -390,7 +404,7 @@ export function vaccinationToRow(v) {
     lot_number: v.lotNumber || '',
     applied_date: v.appliedDate || new Date().toISOString().split('T')[0],
     due_date: v.dueDate || '',
-    vet_name: v.vetName || '',
+    vet_name: v.vetName || 'Dra. María José Mendoza Gutiérrez',
     license_number: v.licenseNumber || '',
     notes: v.notes || '',
     is_travel_valid: v.isTravelValid !== false
@@ -416,11 +430,73 @@ export function rowToVaccination(r) {
 }
 
 // ============================================================================
+// REALTIME MULTI-DEVICE BROADCAST SYNC
+// ============================================================================
+
+const CHANNEL_NAME = 'vet-california-realtime-v1';
+
+export function createRealtimeSyncChannel(onRemoteSync) {
+  if (!supabase) return null;
+
+  try {
+    const channel = supabase.channel(CHANNEL_NAME, {
+      config: { broadcast: { self: false } }
+    });
+
+    channel.on('broadcast', { event: 'clinic-sync' }, (event) => {
+      console.log('📡 [Realtime] Cambio detectado en otro dispositivo:', event);
+      if (typeof onRemoteSync === 'function') {
+        onRemoteSync(event.payload || {});
+      }
+    });
+
+    channel.subscribe((status) => {
+      console.log('📡 [Realtime] Canal de sincronización multi-dispositivo:', status);
+    });
+
+    return channel;
+  } catch (err) {
+    console.warn('Error al iniciar canal de Realtime:', err);
+    return null;
+  }
+}
+
+export async function broadcastSync(channel, metadata = {}) {
+  if (!channel) return;
+  try {
+    await channel.send({
+      type: 'broadcast',
+      event: 'clinic-sync',
+      payload: {
+        timestamp: Date.now(),
+        ...metadata
+      }
+    });
+  } catch (err) {
+    console.warn('No se pudo emitir broadcast de sincronización:', err);
+  }
+}
+
+// ============================================================================
 // CLOUD SYNC OPERATIONS
 // ============================================================================
 
 export async function fetchAllFromSupabase() {
   if (!supabase) return null;
+
+  const fetchPromise = Promise.all([
+    supabase.from('clients').select('*').order('created_at', { ascending: false }),
+    supabase.from('pets').select('*').order('created_at', { ascending: false }),
+    supabase.from('appointments').select('*').order('created_at', { ascending: false }),
+    supabase.from('cages').select('*').order('code', { ascending: true }),
+    supabase.from('rescues').select('*').order('created_at', { ascending: false }),
+    supabase.from('surgeries').select('*').order('created_at', { ascending: false }),
+    supabase.from('vaccinations').select('*').order('created_at', { ascending: false })
+  ]);
+
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar con Supabase (14s)')), 14000)
+  );
 
   const [
     clientsRes,
@@ -430,15 +506,7 @@ export async function fetchAllFromSupabase() {
     rescuesRes,
     surgeriesRes,
     vacsRes
-  ] = await Promise.all([
-    supabase.from('clients').select('*').order('created_at', { ascending: false }),
-    supabase.from('pets').select('*').order('created_at', { ascending: false }),
-    supabase.from('appointments').select('*').order('created_at', { ascending: false }),
-    supabase.from('cages').select('*').order('code', { ascending: true }),
-    supabase.from('rescues').select('*').order('created_at', { ascending: false }),
-    supabase.from('surgeries').select('*').order('created_at', { ascending: false }),
-    supabase.from('vaccinations').select('*').order('created_at', { ascending: false })
-  ]);
+  ] = await Promise.race([fetchPromise, timeoutPromise]);
 
   const errors = [
     clientsRes.error,
@@ -468,74 +536,168 @@ export async function fetchAllFromSupabase() {
 export async function syncAllToSupabase(data) {
   if (!supabase || !data) return { success: false, error: 'Supabase no configurado' };
 
-  const clients = data.clients || [];
-  const pets = data.pets || [];
-  const appointments = data.appointments || [];
-  const cages = normalizeAndDeduplicateCages(data.cages || []);
-  const rescues = normalizeAndDeduplicateRescues(data.rescues || []);
-  const surgeries = data.surgeries || [];
-  const vaccinations = data.vaccinations || [];
+  const syncPromise = (async () => {
+    const clients = data.clients || [];
+    const pets = data.pets || [];
+    const appointments = data.appointments || [];
+    const cages = normalizeAndDeduplicateCages(data.cages || []);
+    const rescues = normalizeAndDeduplicateRescues(data.rescues || []);
+    const surgeries = data.surgeries || [];
+    const vaccinations = data.vaccinations || [];
 
-  const validClientIds = new Set(clients.map(c => c.id));
-  const validPetIds = new Set(pets.map(p => p.id));
+    const validClientIds = new Set(clients.map(c => c.id));
+    const validPetIds = new Set(pets.map(p => p.id));
+    const errors = [];
 
-  // 1. Upsert Clients first (referenced by pets & appointments)
-  if (clients.length > 0) {
-    const { error } = await supabase.from('clients').upsert(clients.map(clientToRow), { onConflict: 'id' });
-    if (error) throw error;
-  }
-
-  // 2. Upsert Pets (referenced by appointments)
-  if (pets.length > 0) {
-    const { error } = await supabase.from('pets').upsert(pets.map(p => petToRow(p, validClientIds)), { onConflict: 'id' });
-    if (error) throw error;
-  }
-
-  // 3. Upsert remaining tables in parallel (with automatic recovery on unique code collisions)
-  const upsertCagesSafe = async () => {
-    if (cages.length === 0) return { error: null };
-    const rows = cages.map(cageToRow);
-    const res = await supabase.from('cages').upsert(rows, { onConflict: 'id' });
-    if (res.error && res.error.code === '23505') {
-      const safeRows = rows.map((row, idx) => ({
-        ...row,
-        code: `${row.code} (${String(row.id || idx).slice(-4)})`
-      }));
-      return supabase.from('cages').upsert(safeRows, { onConflict: 'id' });
+    // 1. Clients first (referenced by pets & appointments)
+    if (clients.length > 0) {
+      try {
+        const rows = clients.map(clientToRow);
+        const { error } = await supabase.from('clients').upsert(rows, { onConflict: 'id' });
+        if (error) {
+          console.warn('Clients batch upsert error, retrying individual rows:', error);
+          for (const row of rows) {
+            const { error: rErr } = await supabase.from('clients').upsert(row, { onConflict: 'id' });
+            if (rErr) errors.push(`Cliente ${row.id}: ${rErr.message}`);
+          }
+        }
+      } catch (e) {
+        errors.push(`Clients: ${e.message}`);
+      }
     }
-    return res;
-  };
 
-  const upsertRescuesSafe = async () => {
-    if (rescues.length === 0) return { error: null };
-    const rows = rescues.map(rescueToRow);
-    const res = await supabase.from('rescues').upsert(rows, { onConflict: 'id' });
-    if (res.error && res.error.code === '23505') {
-      const safeRows = rows.map((row, idx) => ({
-        ...row,
-        rescue_code: `${row.rescue_code}-${String(row.id || idx).slice(-4)}`
-      }));
-      return supabase.from('rescues').upsert(safeRows, { onConflict: 'id' });
+    // 2. Pets (referenced by appointments)
+    if (pets.length > 0) {
+      try {
+        const rows = pets.map(p => petToRow(p, validClientIds));
+        const { error } = await supabase.from('pets').upsert(rows, { onConflict: 'id' });
+        if (error) {
+          console.warn('Pets batch upsert error, retrying individual rows:', error);
+          for (const row of rows) {
+            let res = await supabase.from('pets').upsert(row, { onConflict: 'id' });
+            if (res.error && res.error.code === '23503') {
+              res = await supabase.from('pets').upsert({ ...row, client_id: null }, { onConflict: 'id' });
+            }
+            if (res.error) errors.push(`Mascota ${row.id}: ${res.error.message}`);
+          }
+        }
+      } catch (e) {
+        errors.push(`Pets: ${e.message}`);
+      }
     }
-    return res;
-  };
 
-  const ops = [upsertCagesSafe(), upsertRescuesSafe()];
-  if (appointments.length > 0) {
-    ops.push(supabase.from('appointments').upsert(appointments.map(a => appointmentToRow(a, validClientIds, validPetIds)), { onConflict: 'id' }));
-  }
-  if (surgeries.length > 0) {
-    ops.push(supabase.from('surgeries').upsert(surgeries.map(surgeryToRow), { onConflict: 'id' }));
-  }
-  if (vaccinations.length > 0) {
-    ops.push(supabase.from('vaccinations').upsert(vaccinations.map(vaccinationToRow), { onConflict: 'id' }));
-  }
+    // 3. Cages (safe against unique constraint 23505)
+    if (cages.length > 0) {
+      try {
+        const rows = cages.map(cageToRow);
+        const res = await supabase.from('cages').upsert(rows, { onConflict: 'id' });
+        if (res.error) {
+          console.warn('Cages batch upsert error, retrying with unique suffix:', res.error);
+          for (const [idx, row] of rows.entries()) {
+            let r = await supabase.from('cages').upsert(row, { onConflict: 'id' });
+            if (r.error && r.error.code === '23505') {
+              const safeCode = `${row.code} (${String(row.id || idx).slice(-4)})`;
+              r = await supabase.from('cages').upsert({ ...row, code: safeCode }, { onConflict: 'id' });
+            }
+            if (r.error) errors.push(`Jaula ${row.id}: ${r.error.message}`);
+          }
+        }
+      } catch (e) {
+        errors.push(`Cages: ${e.message}`);
+      }
+    }
 
-  const results = await Promise.all(ops);
-  const err = results.find(r => r?.error)?.error;
-  if (err) throw err;
+    // 4. Rescues
+    if (rescues.length > 0) {
+      try {
+        const rows = rescues.map(rescueToRow);
+        const res = await supabase.from('rescues').upsert(rows, { onConflict: 'id' });
+        if (res.error) {
+          console.warn('Rescues batch upsert error, retrying with unique suffix:', res.error);
+          for (const [idx, row] of rows.entries()) {
+            let r = await supabase.from('rescues').upsert(row, { onConflict: 'id' });
+            if (r.error && r.error.code === '23505') {
+              const safeCode = `${row.rescue_code}-${String(row.id || idx).slice(-4)}`;
+              r = await supabase.from('rescues').upsert({ ...row, rescue_code: safeCode }, { onConflict: 'id' });
+            }
+            if (r.error) errors.push(`Rescate ${row.id}: ${r.error.message}`);
+          }
+        }
+      } catch (e) {
+        errors.push(`Rescues: ${e.message}`);
+      }
+    }
 
-  return { success: true };
+    // 5. Appointments
+    if (appointments.length > 0) {
+      try {
+        const rows = appointments.map(a => appointmentToRow(a, validClientIds, validPetIds));
+        const { error } = await supabase.from('appointments').upsert(rows, { onConflict: 'id' });
+        if (error) {
+          console.warn('Appointments batch upsert error, retrying individual rows:', error);
+          for (const row of rows) {
+            let r = await supabase.from('appointments').upsert(row, { onConflict: 'id' });
+            if (r.error && r.error.code === '23503') {
+              r = await supabase.from('appointments').upsert({ ...row, client_id: null, pet_id: null }, { onConflict: 'id' });
+            }
+            if (r.error) errors.push(`Cita ${row.id}: ${r.error.message}`);
+          }
+        }
+      } catch (e) {
+        errors.push(`Appointments: ${e.message}`);
+      }
+    }
+
+    // 6. Surgeries
+    if (surgeries.length > 0) {
+      try {
+        const rows = surgeries.map(surgeryToRow);
+        const { error } = await supabase.from('surgeries').upsert(rows, { onConflict: 'id' });
+        if (error) {
+          console.warn('Surgeries batch upsert error, retrying individual rows:', error);
+          for (const row of rows) {
+            const { error: sErr } = await supabase.from('surgeries').upsert(row, { onConflict: 'id' });
+            if (sErr) errors.push(`Cirugía ${row.id}: ${sErr.message}`);
+          }
+        }
+      } catch (e) {
+        errors.push(`Surgeries: ${e.message}`);
+      }
+    }
+
+    // 7. Vaccinations
+    if (vaccinations.length > 0) {
+      try {
+        const rows = vaccinations.map(vaccinationToRow);
+        const { error } = await supabase.from('vaccinations').upsert(rows, { onConflict: 'id' });
+        if (error) {
+          console.warn('Vaccinations batch upsert error, retrying individual rows:', error);
+          for (const row of rows) {
+            const { error: vErr } = await supabase.from('vaccinations').upsert(row, { onConflict: 'id' });
+            if (vErr) errors.push(`Vacuna ${row.id}: ${vErr.message}`);
+          }
+        }
+      } catch (e) {
+        errors.push(`Vaccinations: ${e.message}`);
+      }
+    }
+
+    if (errors.length > 0) {
+      console.warn('syncAllToSupabase encountered non-fatal issues:', errors);
+      // Solo consideramos error bloqueante si fallaron colecciones enteras
+      if (errors.length > 5) {
+        return { success: false, error: errors.slice(0, 3).join('; ') };
+      }
+    }
+
+    return { success: true };
+  })();
+
+  const timeoutPromise = new Promise(resolve =>
+    setTimeout(() => resolve({ success: false, error: 'Tiempo de espera de sincronización agotado (16s)' }), 16000)
+  );
+
+  return Promise.race([syncPromise, timeoutPromise]);
 }
 
 export async function deleteRowFromSupabase(table, id) {

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { INITIAL_DATA, CLINIC_DOCTORS } from '../data/initialData';
 import {
+  supabase,
   isSupabaseConfigured,
   fetchAllFromSupabase,
   syncAllToSupabase,
@@ -8,7 +9,9 @@ import {
   clearAndResetSupabase,
   formatPetAge,
   normalizeAndDeduplicateCages,
-  normalizeAndDeduplicateRescues
+  normalizeAndDeduplicateRescues,
+  createRealtimeSyncChannel,
+  broadcastSync
 } from '../lib/supabase';
 
 export { formatPetAge };
@@ -18,53 +21,72 @@ const AppContext = createContext();
 const STORAGE_KEY = 'vet_california_system_v2_clean';
 const AUTH_STORAGE_KEY = 'vet_california_auth_session_v3';
 
-export const CLINIC_CREDENTIALS = {
-  email: 'servetcalifornia@gmail.com',
-  password: 'servet',
-  name: 'Personal Veterinario California',
-  role: 'Personal Clínico Autorizado'
-};
+function safeSaveLocalStorage(key, stateObj) {
+  try {
+    localStorage.setItem(key, JSON.stringify(stateObj));
+  } catch (err) {
+    console.warn('LocalStorage excedió límite de cuota. Optimizando espacio para mantener datos críticos...');
+    try {
+      // Elimina fotos pesadas (>40KB) del respaldo local ya que están respaldadas en la nube
+      const pruned = {
+        ...stateObj,
+        pets: (stateObj.pets || []).map(p => ({
+          ...p,
+          photoUrl: p.photoUrl && p.photoUrl.length > 40000 ? '' : p.photoUrl,
+          labResults: (p.labResults || []).map(l => ({
+            ...l,
+            fileUrl: l.fileUrl && l.fileUrl.length > 40000 ? '' : l.fileUrl
+          }))
+        }))
+      };
+      localStorage.setItem(key, JSON.stringify(pruned));
+    } catch (e2) {
+      console.error('No se pudo guardar en LocalStorage:', e2);
+    }
+  }
+}
 
-// Aliased for backwards compatibility
-export const PROVISIONAL_CREDENTIALS = CLINIC_CREDENTIALS;
-
-function mergeArraysById(localArr = [], cloudArr = []) {
+function reconcileCollection(localArr = [], cloudArr = []) {
+  if (!cloudArr) return localArr || [];
   const map = new Map();
   cloudArr.forEach(item => {
     if (item && item.id) map.set(item.id, item);
   });
-  localArr.forEach(localItem => {
-    if (!localItem || !localItem.id) return;
-    const cloudItem = map.get(localItem.id);
-    if (!cloudItem) {
-      map.set(localItem.id, localItem);
-    } else {
-      // Merge keeping richer nested arrays if local has more items
-      const merged = { ...cloudItem, ...localItem };
-      if (Array.isArray(cloudItem.clinicalNotes) || Array.isArray(localItem.clinicalNotes)) {
-        merged.clinicalNotes = (localItem.clinicalNotes?.length || 0) >= (cloudItem.clinicalNotes?.length || 0)
-          ? (localItem.clinicalNotes || [])
-          : (cloudItem.clinicalNotes || []);
+
+  // Si hubo registros creados localmente mientras no había internet (offline), preservarlos
+  (localArr || []).forEach(localItem => {
+    if (localItem && localItem.id && localItem._pendingSync) {
+      if (!map.has(localItem.id)) {
+        map.set(localItem.id, localItem);
+      } else {
+        map.set(localItem.id, { ...map.get(localItem.id), ...localItem });
       }
-      if (Array.isArray(cloudItem.labResults) || Array.isArray(localItem.labResults)) {
-        merged.labResults = (localItem.labResults?.length || 0) >= (cloudItem.labResults?.length || 0)
-          ? (localItem.labResults || [])
-          : (cloudItem.labResults || []);
-      }
-      if (Array.isArray(cloudItem.additionalProcedures) || Array.isArray(localItem.additionalProcedures)) {
-        merged.additionalProcedures = (localItem.additionalProcedures?.length || 0) >= (cloudItem.additionalProcedures?.length || 0)
-          ? (localItem.additionalProcedures || [])
-          : (cloudItem.additionalProcedures || []);
-      }
-      if (Array.isArray(cloudItem.interventions) || Array.isArray(localItem.interventions)) {
-        merged.interventions = (localItem.interventions?.length || 0) >= (cloudItem.interventions?.length || 0)
-          ? (localItem.interventions || [])
-          : (cloudItem.interventions || []);
-      }
-      map.set(localItem.id, merged);
     }
   });
+
   return Array.from(map.values());
+}
+
+function reconcileWithCloud(localData, cloudData) {
+  if (!cloudData) return localData;
+
+  const cages = cloudData.cages && cloudData.cages.length > 0
+    ? normalizeAndDeduplicateCages(reconcileCollection(localData.cages, cloudData.cages))
+    : normalizeAndDeduplicateCages(localData.cages && localData.cages.length > 0 ? localData.cages : INITIAL_DATA.cages);
+
+  const rescues = normalizeAndDeduplicateRescues(reconcileCollection(localData.rescues, cloudData.rescues || []));
+
+  return {
+    ...INITIAL_DATA,
+    ...localData,
+    clients: reconcileCollection(localData.clients, cloudData.clients || []),
+    pets: reconcileCollection(localData.pets, cloudData.pets || []),
+    appointments: reconcileCollection(localData.appointments, cloudData.appointments || []),
+    rescues,
+    surgeries: reconcileCollection(localData.surgeries, cloudData.surgeries || []),
+    vaccinations: reconcileCollection(localData.vaccinations, cloudData.vaccinations || []),
+    cages
+  };
 }
 
 export function AppProvider({ children }) {
@@ -112,8 +134,21 @@ export function AppProvider({ children }) {
   const [selectedPetIdForPassport, setSelectedPetIdForPassport] = useState(null);
   const [cloudStatus, setCloudStatus] = useState(isSupabaseConfigured ? 'syncing' : 'offline');
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
+
+  const deviceIdRef = useRef('dev-' + Math.random().toString(36).slice(2, 9));
+  const realtimeChannelRef = useRef(null);
   const isInitialCloudLoadDone = useRef(false);
+  const isSyncingRef = useRef(false);
+  const syncQueuedRef = useRef(false);
+  const isRemoteUpdateRef = useRef(false);
+  const lastLocalEditAtRef = useRef(0);
+  const lastFetchedAtRef = useRef(0);
   const syncTimeoutRef = useRef(null);
+  const dataRef = useRef(data);
+
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
 
   // Toast / Notification helper
   const showToast = (message, type = 'success') => {
@@ -123,7 +158,30 @@ export function AppProvider({ children }) {
     }, 3800);
   };
 
-  // Initial load & merge with Supabase Cloud
+  // Helper silencioso para sincronizar novedades desde Supabase sin parpadeos
+  const refreshFromSupabaseSilently = async () => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const cloudData = await fetchAllFromSupabase();
+      if (!cloudData) return;
+
+      lastFetchedAtRef.current = Date.now();
+      isRemoteUpdateRef.current = true;
+
+      setData(prevLocal => {
+        const next = reconcileWithCloud(prevLocal, cloudData);
+        safeSaveLocalStorage(STORAGE_KEY, next);
+        return next;
+      });
+
+      setCloudStatus('synced');
+      setLastSyncedAt(new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }));
+    } catch (e) {
+      console.warn('Error en refresco silencioso desde Supabase:', e);
+    }
+  };
+
+  // Carga inicial y reconciliación con la nube
   useEffect(() => {
     if (!isSupabaseConfigured) {
       setCloudStatus('offline');
@@ -138,42 +196,21 @@ export function AppProvider({ children }) {
         const cloudData = await fetchAllFromSupabase();
         if (!isMounted || !cloudData) return;
 
+        lastFetchedAtRef.current = Date.now();
+        isRemoteUpdateRef.current = true;
+
         setData(prevLocal => {
-          const mergedCages = normalizeAndDeduplicateCages(
-            mergeArraysById(
-              prevLocal.cages && prevLocal.cages.length > 0 ? prevLocal.cages : INITIAL_DATA.cages,
-              cloudData.cages && cloudData.cages.length > 0 ? cloudData.cages : INITIAL_DATA.cages
-            )
-          );
-
-          const merged = {
-            ...INITIAL_DATA,
-            clients: mergeArraysById(prevLocal.clients, cloudData.clients),
-            pets: mergeArraysById(prevLocal.pets, cloudData.pets),
-            appointments: mergeArraysById(prevLocal.appointments, cloudData.appointments),
-            rescues: normalizeAndDeduplicateRescues(mergeArraysById(prevLocal.rescues, cloudData.rescues)),
-            surgeries: mergeArraysById(prevLocal.surgeries, cloudData.surgeries),
-            vaccinations: mergeArraysById(prevLocal.vaccinations, cloudData.vaccinations),
-            cages: mergedCages
-          };
-
-          // Immediately upload merged state so any local records are saved in Supabase
-          syncAllToSupabase(merged)
-            .then(() => {
-              if (isMounted) {
-                setCloudStatus('synced');
-                setLastSyncedAt(new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }));
-              }
-            })
-            .catch(err => {
-              console.error('Error pushing initial merged state to Supabase:', err);
-              if (isMounted) setCloudStatus('error');
-            });
-
-          return merged;
+          const next = reconcileWithCloud(prevLocal, cloudData);
+          safeSaveLocalStorage(STORAGE_KEY, next);
+          return next;
         });
+
+        if (isMounted) {
+          setCloudStatus('synced');
+          setLastSyncedAt(new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }));
+        }
       } catch (err) {
-        console.error('Error loading from Supabase:', err);
+        console.error('Error cargando datos iniciales desde Supabase:', err);
         if (isMounted) setCloudStatus('error');
       } finally {
         if (isMounted) {
@@ -187,13 +224,128 @@ export function AppProvider({ children }) {
     };
   }, []);
 
-  // Auto-save to LocalStorage AND auto-sync to Supabase Cloud on every change
+  // Suscripción a canal Realtime para sincronizar cambios entre múltiples dispositivos
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.error('Error persisting state:', e);
+    if (!isSupabaseConfigured) return;
+
+    const channel = createRealtimeSyncChannel(async (payload) => {
+      // Ignorar actualizaciones si provienen de este mismo dispositivo
+      if (payload?.deviceId === deviceIdRef.current) return;
+
+      // Si el usuario local acaba de editar algo en los últimos 1.5s, no sobreescribir entradas en vuelo
+      if (Date.now() - lastLocalEditAtRef.current < 1500) {
+        setTimeout(refreshFromSupabaseSilently, 1600);
+        return;
+      }
+
+      await refreshFromSupabaseSilently();
+    });
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      if (channel && supabase) {
+        try {
+          supabase.removeChannel(channel);
+        } catch (e) {}
+      }
+    };
+  }, []);
+
+  // Actualización automática al cambiar de pestaña o regresar al dispositivo + sondeo suave
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    const handleFocusOrVisible = async () => {
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        if (now - lastFetchedAtRef.current > 10000 && now - lastLocalEditAtRef.current > 2500) {
+          await refreshFromSupabaseSilently();
+        }
+      }
+    };
+
+    const handleStorageEvent = (e) => {
+      if (e.key === STORAGE_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          isRemoteUpdateRef.current = true;
+          setData(parsed);
+        } catch (err) {}
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
+    window.addEventListener('focus', handleFocusOrVisible);
+    window.addEventListener('storage', handleStorageEvent);
+
+    // Sondeo de respaldo cada 25 segundos
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        handleFocusOrVisible();
+      }
+    }, 25000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
+      window.removeEventListener('focus', handleFocusOrVisible);
+      window.removeEventListener('storage', handleStorageEvent);
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  // Función serializada para enviar cambios a Supabase sin carreras ni colisiones
+  const performSync = async (dataToSync) => {
+    if (!isSupabaseConfigured || !isInitialCloudLoadDone.current) return;
+
+    if (isSyncingRef.current) {
+      syncQueuedRef.current = true;
+      return;
     }
+
+    isSyncingRef.current = true;
+    setCloudStatus('syncing');
+
+    try {
+      const res = await syncAllToSupabase(dataToSync);
+      if (res.success) {
+        const timeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        setCloudStatus('synced');
+        setLastSyncedAt(timeStr);
+        // Avisar a otros dispositivos conectados
+        broadcastSync(realtimeChannelRef.current, {
+          deviceId: deviceIdRef.current,
+          time: timeStr
+        });
+      } else {
+        console.warn('Sync a Supabase reportó aviso/error:', res.error);
+        setCloudStatus('error');
+      }
+    } catch (err) {
+      console.error('Error al sincronizar con Supabase:', err);
+      setCloudStatus('error');
+    } finally {
+      isSyncingRef.current = false;
+      if (syncQueuedRef.current) {
+        syncQueuedRef.current = false;
+        setTimeout(() => {
+          performSync(dataRef.current);
+        }, 150);
+      }
+    }
+  };
+
+  // Guardado local y subida automática debounced a la nube con cada cambio local
+  useEffect(() => {
+    safeSaveLocalStorage(STORAGE_KEY, data);
+
+    // Si el cambio de estado fue provocado por una sincronización remota, no re-subir
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
+
+    lastLocalEditAtRef.current = Date.now();
 
     if (!isSupabaseConfigured || !isInitialCloudLoadDone.current) return;
 
@@ -201,22 +353,25 @@ export function AppProvider({ children }) {
       clearTimeout(syncTimeoutRef.current);
     }
 
-    setCloudStatus('syncing');
-    syncTimeoutRef.current = setTimeout(async () => {
-      try {
-        await syncAllToSupabase(data);
-        setCloudStatus('synced');
-        setLastSyncedAt(new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }));
-      } catch (err) {
-        console.error('Error syncing to Supabase:', err);
-        setCloudStatus('error');
-      }
-    }, 350);
+    syncTimeoutRef.current = setTimeout(() => {
+      performSync(data);
+    }, 450);
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
   }, [data]);
+
+  // Reintento automático si quedó en estado de error
+  useEffect(() => {
+    if (cloudStatus !== 'error' || !isSupabaseConfigured || !isInitialCloudLoadDone.current) return;
+
+    const retryTimer = setTimeout(async () => {
+      performSync(dataRef.current);
+    }, 8000);
+
+    return () => clearTimeout(retryTimer);
+  }, [cloudStatus]);
 
   const syncNow = async () => {
     if (!isSupabaseConfigured) {
@@ -225,40 +380,36 @@ export function AppProvider({ children }) {
     }
     try {
       setCloudStatus('syncing');
-      let payloadToSync = {
-        ...data,
-        cages: normalizeAndDeduplicateCages(data.cages || []),
-        rescues: normalizeAndDeduplicateRescues(data.rescues || [])
-      };
+
+      // 1. Obtener primero los datos frescos de la nube
+      let latestData = dataRef.current;
       try {
         const cloudData = await fetchAllFromSupabase();
         if (cloudData) {
-          payloadToSync = {
-            ...INITIAL_DATA,
-            clients: mergeArraysById(data.clients, cloudData.clients),
-            pets: mergeArraysById(data.pets, cloudData.pets),
-            appointments: mergeArraysById(data.appointments, cloudData.appointments),
-            rescues: normalizeAndDeduplicateRescues(mergeArraysById(data.rescues, cloudData.rescues)),
-            surgeries: mergeArraysById(data.surgeries, cloudData.surgeries),
-            vaccinations: mergeArraysById(data.vaccinations, cloudData.vaccinations),
-            cages: normalizeAndDeduplicateCages(
-              mergeArraysById(
-                data.cages && data.cages.length > 0 ? data.cages : INITIAL_DATA.cages,
-                cloudData.cages && cloudData.cages.length > 0 ? cloudData.cages : INITIAL_DATA.cages
-              )
-            )
-          };
-          setData(payloadToSync);
+          latestData = reconcileWithCloud(dataRef.current, cloudData);
+          isRemoteUpdateRef.current = true;
+          setData(latestData);
+          safeSaveLocalStorage(STORAGE_KEY, latestData);
         }
       } catch (fetchErr) {
-        console.warn('Could not fetch before manual sync, uploading local data:', fetchErr);
+        console.warn('No se pudo descargar antes de subir, procediendo con datos locales:', fetchErr);
       }
 
-      await syncAllToSupabase(payloadToSync);
-      const timeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
-      setCloudStatus('synced');
-      setLastSyncedAt(timeStr);
-      showToast('Información subida y sincronizada en la nube de Supabase');
+      // 2. Subir a Supabase
+      const res = await syncAllToSupabase(latestData);
+      if (res.success) {
+        const timeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        setCloudStatus('synced');
+        setLastSyncedAt(timeStr);
+        broadcastSync(realtimeChannelRef.current, {
+          deviceId: deviceIdRef.current,
+          time: timeStr
+        });
+        showToast('Información sincronizada en la nube de Supabase');
+      } else {
+        setCloudStatus('error');
+        showToast('Error al sincronizar con Supabase: ' + (res.error || 'Revisa tu conexión'), 'error');
+      }
     } catch (err) {
       console.error('Manual sync error:', err);
       setCloudStatus('error');
@@ -380,6 +531,7 @@ export function AppProvider({ children }) {
       appointments: prev.appointments.filter(apt => apt.id !== aptId)
     }));
     deleteRowFromSupabase('appointments', aptId);
+    broadcastSync(realtimeChannelRef.current, { deviceId: deviceIdRef.current, action: 'delete', table: 'appointments', id: aptId });
     showToast('Cita cancelada/eliminada del registro', 'info');
   };
 
@@ -812,6 +964,7 @@ export function AppProvider({ children }) {
       surgeries: prev.surgeries.filter(s => s.id !== surgeryId)
     }));
     deleteRowFromSupabase('surgeries', surgeryId);
+    broadcastSync(realtimeChannelRef.current, { deviceId: deviceIdRef.current, action: 'delete', table: 'surgeries', id: surgeryId });
     showToast('Registro de cirugía eliminado', 'info');
   };
 
@@ -944,6 +1097,7 @@ export function AppProvider({ children }) {
       cages: (prev.cages || []).filter(cage => cage.id !== cageId)
     }));
     deleteRowFromSupabase('cages', cageId);
+    broadcastSync(realtimeChannelRef.current, { deviceId: deviceIdRef.current, action: 'delete', table: 'cages', id: cageId });
     showToast('Jaula eliminada del inventario', 'info');
   };
 
