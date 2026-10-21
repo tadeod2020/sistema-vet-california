@@ -41,6 +41,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
+import { SurgeryReportModal } from './SurgeryReportModal';
 import { compressPetPhoto, compressLabImage, validateAndReadLabPdf, compressImageFile } from '../lib/imageUtils';
 
 export function PatientsAndClients() {
@@ -81,6 +82,7 @@ export function PatientsAndClients() {
   const [isAddingLab, setIsAddingLab] = useState(false);
   const [previewLabItem, setPreviewLabItem] = useState(null);
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+  const [dossierPrintSurgery, setDossierPrintSurgery] = useState(null);
   const [labForm, setLabForm] = useState({
     title: '',
     category: 'Análisis de Sangre / Hemograma',
@@ -2129,6 +2131,20 @@ export function PatientsAndClients() {
                               <div><strong>Cirujano:</strong> {surg.surgeon || 'Quirófano Principal'}</div>
                               {surg.postOpNotes && <div className="mt-1 text-slate-500 italic">{surg.postOpNotes}</div>}
                             </div>
+                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                              <span className="text-[11px] text-slate-500">
+                                {surg.anesthesiaType ? `Anestesia: ${surg.anesthesiaType}` : 'Protocolo quirúrgico oficial'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setDossierPrintSurgery(surg)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-300 hover:bg-amber-400 text-amber-950 font-bold text-xs rounded-xl shadow-2xs transition-all active:scale-95 cursor-pointer"
+                                title="Imprimir u obtener Reporte Quirúrgico en PDF"
+                              >
+                                <Printer className="w-3.5 h-3.5 text-rose-900" />
+                                Imprimir Hoja Quirúrgica (PDF)
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -2701,6 +2717,13 @@ export function PatientsAndClients() {
             )}
           </div>
         </div>
+      )}
+      {/* Official Printable Surgery Report Modal */}
+      {dossierPrintSurgery && (
+        <SurgeryReportModal
+          surgery={dossierPrintSurgery}
+          onClose={() => setDossierPrintSurgery(null)}
+        />
       )}
     </div>
   );

@@ -255,7 +255,8 @@ export function appointmentToRow(a, validClientIds = new Set(), validPetIds = ne
     notes: encodeMeta(a.assignedVet ? `Médico: ${a.assignedVet}` : '', {
       assignedVet: a.assignedVet || 'Dra. María José Mendoza Gutiérrez',
       petNames: Array.isArray(a.petNames) ? a.petNames : (a.petName ? a.petName.split(',').map(s => s.trim()).filter(Boolean) : []),
-      slotIndex: a.slotIndex || 1
+      slotIndex: a.slotIndex || 1,
+      phone: a.phone || ''
     })
   };
 }
@@ -275,7 +276,8 @@ export function rowToAppointment(r) {
     reason: r.service || '',
     status: r.status || 'Pendiente',
     assignedVet: meta?.assignedVet || 'Dra. María José Mendoza Gutiérrez',
-    slotIndex: meta?.slotIndex || 1
+    slotIndex: meta?.slotIndex || 1,
+    phone: r.phone || meta?.phone || ''
   };
 }
 

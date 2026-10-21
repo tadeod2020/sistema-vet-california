@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { getLocalDateString, shiftLocalDateString } from '../lib/dateUtils.js';
+import { getAppointmentWhatsappUrl, cleanWhatsappNumber } from '../lib/whatsappUtils.js';
 import { 
   Calendar, 
   Clock, 
@@ -14,7 +15,9 @@ import {
   ChevronRight,
   Pencil,
   Trash2,
-  Dog
+  Dog,
+  MessageCircle,
+  Phone
 } from 'lucide-react';
 
 const OPERATING_HOURS = [
@@ -57,12 +60,15 @@ export function Agenda() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAptId, setEditingAptId] = useState(null);
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [whatsappPromptApt, setWhatsappPromptApt] = useState(null);
+  const [whatsappPhoneInput, setWhatsappPhoneInput] = useState("");
 
   // Form state (supports 2 or more dogs/pets via petNames array)
   const [formData, setFormData] = useState({
     date: getLocalDateString(),
     timeHour: "09:00",
     clientName: "",
+    phone: "",
     petNames: [""],
     reason: "",
     assignedVet: doctorOptions[0],
@@ -92,6 +98,7 @@ export function Agenda() {
       date: selectedDate,
       timeHour: targetHour,
       clientName: "",
+      phone: "",
       petNames: [""],
       reason: "",
       assignedVet: doctorOptions[0],
@@ -111,12 +118,56 @@ export function Agenda() {
       date: apt.date || selectedDate,
       timeHour: apt.timeHour || "09:00",
       clientName: apt.clientName || "",
+      phone: apt.phone || matchedClient?.phone || "",
       petNames: existingPets.length > 0 ? existingPets : [""],
       reason: apt.reason || "",
       assignedVet: apt.assignedVet || doctorOptions[0],
       status: apt.status || "Pendiente"
     });
     setIsModalOpen(true);
+  };
+
+  const handleOpenWhatsapp = (apt) => {
+    const matchedClient = clients.find(
+      c => (apt.clientId && c.id === apt.clientId) ||
+           c.name.trim().toLowerCase() === (apt.clientName || '').trim().toLowerCase()
+    );
+    const existingPhone = apt.phone || matchedClient?.phone || matchedClient?.whatsapp || '';
+    if (existingPhone && cleanWhatsappNumber(existingPhone)) {
+      const url = getAppointmentWhatsappUrl(apt, matchedClient, existingPhone);
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+    }
+    // Si no tiene teléfono configurado, solicitar número para enviarlo
+    setWhatsappPromptApt(apt);
+    setWhatsappPhoneInput(existingPhone || '');
+  };
+
+  const handleConfirmSendWhatsapp = (e) => {
+    e.preventDefault();
+    if (!whatsappPromptApt) return;
+    const cleanPhone = (whatsappPhoneInput || '').trim();
+    if (!cleanPhone) {
+      alert('Por favor ingresa un número de teléfono válido.');
+      return;
+    }
+
+    // Actualizar teléfono en la cita
+    updateAppointment(whatsappPromptApt.id, { phone: cleanPhone });
+
+    const matchedClient = clients.find(
+      c => (whatsappPromptApt.clientId && c.id === whatsappPromptApt.clientId) ||
+           c.name.trim().toLowerCase() === (whatsappPromptApt.clientName || '').trim().toLowerCase()
+    );
+
+    const url = getAppointmentWhatsappUrl(whatsappPromptApt, matchedClient, cleanPhone);
+    setWhatsappPromptApt(null);
+    setWhatsappPhoneInput('');
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   const handleSaveAppointment = (e) => {
@@ -132,6 +183,7 @@ export function Agenda() {
       date: formData.date || selectedDate,
       timeHour: formData.timeHour,
       clientName: formData.clientName.trim(),
+      phone: (formData.phone || '').trim(),
       petNames: validPets,
       petName: validPets.join(", "),
       reason: formData.reason.trim(),
@@ -167,6 +219,7 @@ export function Agenda() {
       setFormData(prev => ({
         ...prev,
         clientName: client.name,
+        phone: client.phone || client.whatsapp || prev.phone,
         petNames: clientPets.length > 0 ? clientPets.map(p => p.name) : prev.petNames
       }));
     }
@@ -448,6 +501,40 @@ export function Agenda() {
                           {apt.reason}
                         </div>
 
+                        {/* Recordatorio WhatsApp y Teléfono */}
+                        {(() => {
+                          const matchedClient = clients.find(
+                            c => (apt.clientId && c.id === apt.clientId) ||
+                                 c.name.trim().toLowerCase() === (apt.clientName || '').trim().toLowerCase()
+                          );
+                          const aptPhone = apt.phone || matchedClient?.phone || matchedClient?.whatsapp || '';
+
+                          return (
+                            <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1 text-[11px] text-slate-500 truncate">
+                                {aptPhone ? (
+                                  <span className="flex items-center gap-1 font-mono text-[11px] text-slate-600 truncate">
+                                    <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                                    <span className="truncate">{aptPhone}</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 italic">Sin teléfono registrado</span>
+                                )}
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenWhatsapp(apt)}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg shadow-2xs transition-all active:scale-95 shrink-0 cursor-pointer"
+                                title="Enviar recordatorio de cita médica por WhatsApp"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 text-emerald-600 fill-emerald-100 shrink-0" />
+                                <span>Recordar WhatsApp</span>
+                              </button>
+                            </div>
+                          );
+                        })()}
+
                         <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between gap-2 text-[10px] text-slate-400">
                           <span className="flex items-center gap-1 truncate">
                             <Stethoscope className="w-3 h-3 text-rose-800 shrink-0" />
@@ -591,6 +678,27 @@ export function Agenda() {
                   placeholder="Ej. Juan Pérez o Rescate Callejero"
                   value={formData.clientName}
                   onChange={(e) => setFormData(prev => ({ ...prev, clientName: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                />
+              </div>
+
+              {/* Teléfono / WhatsApp de Contacto */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-slate-400" />
+                    Teléfono / WhatsApp de Contacto
+                  </span>
+                  <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
+                    <MessageCircle className="w-3 h-3 text-emerald-600" />
+                    Para recordatorios de cita
+                  </span>
+                </label>
+                <input
+                  type="tel"
+                  placeholder="Ej. (664) 123-4567 o 619 123 4567"
+                  value={formData.phone}
+                  onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
                 />
               </div>
@@ -745,6 +853,71 @@ export function Agenda() {
                   className="px-5 py-2 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-500 rounded-xl shadow-xs transition-all active:scale-95"
                 >
                   {editingAptId ? "Guardar Cambios" : "Confirmar Cita"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL: SOLICITAR NÚMERO DE TELÉFONO PARA WHATSAPP */}
+      {whatsappPromptApt && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-scaleUp">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                <MessageCircle className="w-5 h-5 text-emerald-600 fill-emerald-100" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  Enviar Recordatorio por WhatsApp
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {whatsappPromptApt.clientName} &bull; {whatsappPromptApt.petName || 'Mascota'}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 rounded-2xl p-3 border border-amber-200 text-xs text-amber-950 space-y-1">
+              <div><strong>Fecha de la cita:</strong> {whatsappPromptApt.date} a las {whatsappPromptApt.timeHour}</div>
+              <div><strong>Motivo:</strong> {whatsappPromptApt.reason}</div>
+            </div>
+
+            <form onSubmit={handleConfirmSendWhatsapp} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Número de Celular / WhatsApp *
+                </label>
+                <input
+                  type="tel"
+                  required
+                  autoFocus
+                  placeholder="Ej. 664 123 4567 o 619 123 4567"
+                  value={whatsappPhoneInput}
+                  onChange={(e) => setWhatsappPhoneInput(e.target.value)}
+                  className="w-full px-3 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium"
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Se enviará automáticamente el recordatorio formal con fecha, hora, mascotas y ubicación de la clínica.
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWhatsappPromptApt(null);
+                    setWhatsappPhoneInput('');
+                  }}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
+                >
+                  <MessageCircle className="w-4 h-4 fill-white" />
+                  Abrir WhatsApp
                 </button>
               </div>
             </form>
