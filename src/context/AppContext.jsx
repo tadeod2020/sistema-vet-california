@@ -89,12 +89,14 @@ function reconcileCollection(localArr = [], cloudArr = []) {
     if (item && item.id && !isTestRecord(item)) map.set(item.id, item);
   });
 
-  // Preservar registros locales SOLAMENTE si están pendientes de sincronización (creados/editados offline)
+  // Preservar registros locales que aún no existan en la nube O que tengan cambios pendientes de sincronización
   (localArr || []).forEach(localItem => {
-    if (localItem && localItem.id && !isTestRecord(localItem) && localItem._pendingSync) {
+    if (localItem && localItem.id && !isTestRecord(localItem)) {
       if (!map.has(localItem.id)) {
+        // Creado localmente en este dispositivo y aún no reflejado en la nube: no borrar
         map.set(localItem.id, localItem);
-      } else {
+      } else if (localItem._pendingSync) {
+        // Editado localmente con cambios pendientes offline
         map.set(localItem.id, { ...map.get(localItem.id), ...localItem });
       }
     }
@@ -575,64 +577,76 @@ export function AppProvider({ children }) {
   };
 
   const updateAppointment = (aptId, updatedFields) => {
-    let targetUpdated = null;
+    const current = (dataRef.current.appointments || []).find(apt => apt.id === aptId);
+    if (!current) return { success: false };
+
+    const cleanPetNames = Array.isArray(updatedFields.petNames)
+      ? updatedFields.petNames.map(n => n.trim()).filter(Boolean)
+      : (updatedFields.petName ? [updatedFields.petName.trim()].filter(Boolean) : undefined);
+
+    const combinedPetName = cleanPetNames && cleanPetNames.length > 0
+      ? cleanPetNames.join(', ')
+      : updatedFields.petName;
+
+    const targetUpdated = {
+      ...current,
+      ...updatedFields,
+      phone: String(updatedFields.phone !== undefined ? updatedFields.phone : (current.phone || '')).trim(),
+      ...(combinedPetName !== undefined ? { petName: combinedPetName } : {}),
+      ...(cleanPetNames !== undefined ? { petNames: cleanPetNames } : {})
+    };
+
     setData(prev => {
-      const cleanPetNames = Array.isArray(updatedFields.petNames)
-        ? updatedFields.petNames.map(n => n.trim()).filter(Boolean)
-        : (updatedFields.petName ? [updatedFields.petName.trim()].filter(Boolean) : undefined);
-
-      const combinedPetName = cleanPetNames && cleanPetNames.length > 0
-        ? cleanPetNames.join(', ')
-        : updatedFields.petName;
-
-      const nextApts = prev.appointments.map(apt => {
-        if (apt.id !== aptId) return apt;
-        targetUpdated = {
-          ...apt,
-          ...updatedFields,
-          phone: String(updatedFields.phone !== undefined ? updatedFields.phone : (apt.phone || '')).trim(),
-          ...(combinedPetName !== undefined ? { petName: combinedPetName } : {}),
-          ...(cleanPetNames !== undefined ? { petNames: cleanPetNames } : {})
-        };
-        return targetUpdated;
-      });
+      const nextApts = (prev.appointments || []).map(apt => apt.id === aptId ? targetUpdated : apt);
       return { ...prev, appointments: nextApts };
     });
+    dataRef.current = {
+      ...dataRef.current,
+      appointments: (dataRef.current.appointments || []).map(apt => apt.id === aptId ? targetUpdated : apt)
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
 
     showToast('Cita médica actualizada con éxito');
 
-    if (targetUpdated) {
-      const validClientIds = new Set((data.clients || []).map(c => c.id));
-      const validPetIds = new Set((data.pets || []).map(p => p.id));
-      verifyAndUploadDirect('appointments', targetUpdated, () => saveAppointmentDirect(targetUpdated, validClientIds, validPetIds));
-    }
+    const validClientIds = new Set((dataRef.current.clients || []).map(c => c.id));
+    const validPetIds = new Set((dataRef.current.pets || []).map(p => p.id));
+    verifyAndUploadDirect('appointments', targetUpdated, () => saveAppointmentDirect(targetUpdated, validClientIds, validPetIds));
     return { success: true };
   };
 
   const updateAppointmentStatus = (aptId, newStatus) => {
-    let targetUpdated = null;
+    const current = (dataRef.current.appointments || []).find(apt => apt.id === aptId);
+    if (!current) return;
+
+    const targetUpdated = { ...current, status: newStatus };
+
     setData(prev => {
-      const nextApts = prev.appointments.map(apt => {
-        if (apt.id !== aptId) return apt;
-        targetUpdated = { ...apt, status: newStatus };
-        return targetUpdated;
-      });
+      const nextApts = (prev.appointments || []).map(apt => apt.id === aptId ? targetUpdated : apt);
       return { ...prev, appointments: nextApts };
     });
+    dataRef.current = {
+      ...dataRef.current,
+      appointments: (dataRef.current.appointments || []).map(apt => apt.id === aptId ? targetUpdated : apt)
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
+
     showToast(`Estado de cita actualizado a: ${newStatus}`);
 
-    if (targetUpdated) {
-      const validClientIds = new Set((data.clients || []).map(c => c.id));
-      const validPetIds = new Set((data.pets || []).map(p => p.id));
-      verifyAndUploadDirect('appointments', targetUpdated, () => saveAppointmentDirect(targetUpdated, validClientIds, validPetIds));
-    }
+    const validClientIds = new Set((dataRef.current.clients || []).map(c => c.id));
+    const validPetIds = new Set((dataRef.current.pets || []).map(p => p.id));
+    verifyAndUploadDirect('appointments', targetUpdated, () => saveAppointmentDirect(targetUpdated, validClientIds, validPetIds));
   };
 
   const deleteAppointment = (aptId) => {
-    setData(prev => ({
-      ...prev,
-      appointments: prev.appointments.filter(apt => apt.id !== aptId)
-    }));
+    setData(prev => {
+      const next = {
+        ...prev,
+        appointments: (prev.appointments || []).filter(apt => apt.id !== aptId)
+      };
+      dataRef.current = next;
+      safeSaveLocalStorage(STORAGE_KEY, next);
+      return next;
+    });
     verifyAndDeleteDirect('appointments', aptId);
     showToast('Cita cancelada/eliminada del registro', 'info');
   };
@@ -663,110 +677,117 @@ export function AppProvider({ children }) {
   };
 
   const updatePet = (petId, fields) => {
-    let petToUpload = null;
+    const currentPets = dataRef.current?.pets || [];
+    const currentClients = dataRef.current?.clients || [];
+    const targetPet = currentPets.find(p => p.id === petId);
+    if (!targetPet) return;
+
+    const {
+      ownerName,
+      ownerPhone,
+      ownerAddress,
+      ownerEmail,
+      petName,
+      ...petFields
+    } = fields;
+
+    const resolvedName = (petName !== undefined ? petName : petFields.name ?? targetPet.name).trim();
+    const resolvedAgeUnit = petFields.ageUnit || targetPet.ageUnit || 'años';
+
+    let resolvedAgeYears = targetPet.ageYears ?? 1;
+    let resolvedAgeMonths = targetPet.ageMonths ?? 0;
+
+    if (resolvedAgeUnit === 'meses') {
+      const rawMonths = petFields.ageMonths !== undefined && petFields.ageMonths !== ''
+        ? Number(petFields.ageMonths)
+        : (petFields.ageYears !== undefined && petFields.ageYears !== '' ? Number(petFields.ageYears) : (targetPet.ageMonths || targetPet.ageYears || 1));
+      resolvedAgeMonths = rawMonths;
+      resolvedAgeYears = 0;
+    } else {
+      if (petFields.ageYears !== undefined && petFields.ageYears !== '') {
+        resolvedAgeYears = Number(petFields.ageYears);
+      }
+      resolvedAgeMonths = petFields.ageMonths !== undefined && petFields.ageMonths !== ''
+        ? Number(petFields.ageMonths)
+        : 0;
+    }
+
+    if (petFields.photoUrl && petFields.photoUrl.length > 55000) {
+      console.warn('Foto de mascota excede 55KB, descartada para evitar error de sincronización');
+      petFields.photoUrl = '';
+    }
+
+    const updatedPetObj = {
+      ...targetPet,
+      ...petFields,
+      name: resolvedName,
+      ageUnit: resolvedAgeUnit,
+      ageYears: resolvedAgeYears,
+      ageMonths: resolvedAgeMonths,
+      ...(petFields.weightKg !== undefined && petFields.weightKg !== '' ? { weightKg: Number(petFields.weightKg) } : {})
+    };
+
     let clientToUpload = null;
-
-    setData(prev => {
-      const targetPet = prev.pets.find(p => p.id === petId);
-      if (!targetPet) return prev;
-
-      const {
-        ownerName,
-        ownerPhone,
-        ownerAddress,
-        ownerEmail,
-        petName,
-        ...petFields
-      } = fields;
-
-      const resolvedName = (petName !== undefined ? petName : petFields.name ?? targetPet.name).trim();
-      const resolvedAgeUnit = petFields.ageUnit || targetPet.ageUnit || 'años';
-
-      let resolvedAgeYears = targetPet.ageYears ?? 1;
-      let resolvedAgeMonths = targetPet.ageMonths ?? 0;
-
-      if (resolvedAgeUnit === 'meses') {
-        const rawMonths = petFields.ageMonths !== undefined && petFields.ageMonths !== ''
-          ? Number(petFields.ageMonths)
-          : (petFields.ageYears !== undefined && petFields.ageYears !== '' ? Number(petFields.ageYears) : (targetPet.ageMonths || targetPet.ageYears || 1));
-        resolvedAgeMonths = rawMonths;
-        resolvedAgeYears = 0;
-      } else {
-        if (petFields.ageYears !== undefined && petFields.ageYears !== '') {
-          resolvedAgeYears = Number(petFields.ageYears);
-        }
-        resolvedAgeMonths = petFields.ageMonths !== undefined && petFields.ageMonths !== ''
-          ? Number(petFields.ageMonths)
-          : 0;
-      }
-
-      if (petFields.photoUrl && petFields.photoUrl.length > 55000) {
-        console.warn('Foto de mascota excede 55KB, descartada para evitar error de sincronización');
-        petFields.photoUrl = '';
-      }
-
-      const updatedPetObj = {
-        ...targetPet,
-        ...petFields,
-        name: resolvedName,
-        ageUnit: resolvedAgeUnit,
-        ageYears: resolvedAgeYears,
-        ageMonths: resolvedAgeMonths,
-        ...(petFields.weightKg !== undefined && petFields.weightKg !== '' ? { weightKg: Number(petFields.weightKg) } : {})
-      };
-      petToUpload = updatedPetObj;
-
-      let updatedClients = prev.clients;
-      if (ownerName !== undefined || ownerPhone !== undefined || ownerAddress !== undefined || ownerEmail !== undefined) {
-        const cleanPhone = (ownerPhone ?? '').trim();
-        const cleanNumbers = cleanPhone.replace(/\D/g, '');
-        if (targetPet.clientId && prev.clients.some(c => c.id === targetPet.clientId)) {
-          updatedClients = prev.clients.map(c => {
-            if (c.id !== targetPet.clientId) return c;
-            const nextPhone = cleanPhone || c.phone;
-            const nextDigits = nextPhone.replace(/\D/g, '');
-            clientToUpload = {
-              ...c,
-              ...(ownerName?.trim() ? { name: ownerName.trim() } : {}),
-              ...(cleanPhone ? {
-                phone: cleanPhone,
-                whatsapp: nextDigits ? (nextDigits.startsWith('52') ? nextDigits : `521${nextDigits}`) : c.whatsapp
-              } : {}),
-              ...(ownerAddress !== undefined ? { address: ownerAddress.trim() } : {}),
-              ...(ownerEmail !== undefined ? { email: ownerEmail.trim() } : {})
-            };
-            return clientToUpload;
-          });
-        } else if (ownerName?.trim() || cleanPhone) {
-          const newClient = {
-            id: `cli-${Date.now()}`,
-            name: (ownerName || 'Propietario').trim(),
-            phone: cleanPhone,
-            whatsapp: cleanNumbers ? (cleanNumbers.startsWith('52') ? cleanNumbers : `521${cleanNumbers}`) : '',
-            email: (ownerEmail || '').trim(),
-            address: (ownerAddress || '').trim(),
-            isFrequent: false,
-            tag: 'Cliente Regular',
-            notes: ''
+    let updatedClients = currentClients;
+    if (ownerName !== undefined || ownerPhone !== undefined || ownerAddress !== undefined || ownerEmail !== undefined) {
+      const cleanPhone = (ownerPhone ?? '').trim();
+      const cleanNumbers = cleanPhone.replace(/\D/g, '');
+      if (targetPet.clientId && currentClients.some(c => c.id === targetPet.clientId)) {
+        updatedClients = currentClients.map(c => {
+          if (c.id !== targetPet.clientId) return c;
+          const nextPhone = cleanPhone || c.phone;
+          const nextDigits = nextPhone.replace(/\D/g, '');
+          clientToUpload = {
+            ...c,
+            ...(ownerName?.trim() ? { name: ownerName.trim() } : {}),
+            ...(cleanPhone ? {
+              phone: cleanPhone,
+              whatsapp: nextDigits ? (nextDigits.startsWith('52') ? nextDigits : `521${nextDigits}`) : c.whatsapp
+            } : {}),
+            ...(ownerAddress !== undefined ? { address: ownerAddress.trim() } : {}),
+            ...(ownerEmail !== undefined ? { email: ownerEmail.trim() } : {})
           };
-          clientToUpload = newClient;
-          updatedClients = [newClient, ...prev.clients];
-          updatedPetObj.clientId = newClient.id;
-        }
+          return clientToUpload;
+        });
+      } else if (ownerName?.trim() || cleanPhone) {
+        const newClient = {
+          id: `cli-${Date.now()}`,
+          name: (ownerName || 'Propietario').trim(),
+          phone: cleanPhone,
+          whatsapp: cleanNumbers ? (cleanNumbers.startsWith('52') ? cleanNumbers : `521${cleanNumbers}`) : '',
+          email: (ownerEmail || '').trim(),
+          address: (ownerAddress || '').trim(),
+          isFrequent: false,
+          tag: 'Cliente Regular',
+          notes: ''
+        };
+        clientToUpload = newClient;
+        updatedClients = [newClient, ...currentClients];
+        updatedPetObj.clientId = newClient.id;
       }
+    }
 
-      const nameChanged = resolvedName && resolvedName !== targetPet.name;
-      const updatedVaccinations = nameChanged
-        ? (prev.vaccinations || []).map(v => v.petId === petId ? { ...v, petName: resolvedName } : v)
-        : prev.vaccinations;
+    const nameChanged = resolvedName && resolvedName !== targetPet.name;
+    const updatedVaccinations = nameChanged
+      ? (dataRef.current?.vaccinations || []).map(v => v.petId === petId ? { ...v, petName: resolvedName } : v)
+      : (dataRef.current?.vaccinations || []);
 
-      return {
-        ...prev,
-        clients: updatedClients,
-        pets: prev.pets.map(p => p.id === petId ? updatedPetObj : p),
-        vaccinations: updatedVaccinations
-      };
-    });
+    const nextPets = currentPets.map(p => p.id === petId ? updatedPetObj : p);
+
+    setData(prev => ({
+      ...prev,
+      clients: updatedClients,
+      pets: nextPets,
+      vaccinations: updatedVaccinations
+    }));
+
+    dataRef.current = {
+      ...dataRef.current,
+      clients: updatedClients,
+      pets: nextPets,
+      vaccinations: updatedVaccinations
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
 
     showToast('Datos de la mascota actualizados con éxito');
 
@@ -774,16 +795,16 @@ export function AppProvider({ children }) {
       if (clientToUpload) {
         await verifyAndUploadDirect('clients', clientToUpload, () => saveClientDirect(clientToUpload));
       }
-      if (petToUpload) {
-        const validClientIds = new Set((data.clients || []).map(c => c.id));
-        if (clientToUpload) validClientIds.add(clientToUpload.id);
-        await verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
-      }
+      const validClientIds = new Set(updatedClients.map(c => c.id));
+      if (clientToUpload) validClientIds.add(clientToUpload.id);
+      await verifyAndUploadDirect('pets', updatedPetObj, () => savePetDirect(updatedPetObj, validClientIds));
     })();
   };
 
   const addClinicalNote = (petId, note) => {
-    let petToUpload = null;
+    const targetPet = (dataRef.current?.pets || []).find(p => p.id === petId);
+    if (!targetPet) return null;
+
     const newNote = {
       id: `cn-${Date.now()}`,
       date: note.date || new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }),
@@ -799,31 +820,34 @@ export function AppProvider({ children }) {
       nextCheckup: note.nextCheckup || ''
     };
 
-    setData(prev => {
-      const nextPets = prev.pets.map(p => {
-        if (p.id === petId) {
-          petToUpload = {
-            ...p,
-            clinicalNotes: [newNote, ...(p.clinicalNotes || [])]
-          };
-          return petToUpload;
-        }
-        return p;
-      });
-      return { ...prev, pets: nextPets };
-    });
+    const petToUpload = {
+      ...targetPet,
+      clinicalNotes: [newNote, ...(targetPet.clinicalNotes || [])]
+    };
+
+    const nextPets = (dataRef.current?.pets || []).map(p => p.id === petId ? petToUpload : p);
+
+    setData(prev => ({
+      ...prev,
+      pets: nextPets
+    }));
+    dataRef.current = {
+      ...dataRef.current,
+      pets: nextPets
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
 
     showToast('Nota médica agregada al expediente');
 
-    if (petToUpload) {
-      const validClientIds = new Set((data.clients || []).map(c => c.id));
-      verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
-    }
+    const validClientIds = new Set((dataRef.current?.clients || []).map(c => c.id));
+    verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
     return newNote;
   };
 
   const addLabResult = (petId, result) => {
-    let petToUpload = null;
+    const targetPet = (dataRef.current?.pets || []).find(p => p.id === petId);
+    if (!targetPet) return null;
+
     const newResult = {
       id: `lab-${Date.now()}`,
       date: result.date || new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }),
@@ -836,50 +860,55 @@ export function AppProvider({ children }) {
       performedBy: result.performedBy || 'Laboratorio Clínico California'
     };
 
-    setData(prev => {
-      const nextPets = prev.pets.map(p => {
-        if (p.id === petId) {
-          petToUpload = {
-            ...p,
-            labResults: [newResult, ...(p.labResults || [])]
-          };
-          return petToUpload;
-        }
-        return p;
-      });
-      return { ...prev, pets: nextPets };
-    });
+    const petToUpload = {
+      ...targetPet,
+      labResults: [newResult, ...(targetPet.labResults || [])]
+    };
+
+    const nextPets = (dataRef.current?.pets || []).map(p => p.id === petId ? petToUpload : p);
+
+    setData(prev => ({
+      ...prev,
+      pets: nextPets
+    }));
+    dataRef.current = {
+      ...dataRef.current,
+      pets: nextPets
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
 
     showToast('Estudio de laboratorio adjuntado al expediente');
 
-    if (petToUpload) {
-      const validClientIds = new Set((data.clients || []).map(c => c.id));
-      verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
-    }
+    const validClientIds = new Set((dataRef.current?.clients || []).map(c => c.id));
+    verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
     return newResult;
   };
 
   const deleteLabResult = (petId, resultId) => {
-    let petToUpload = null;
-    setData(prev => {
-      const nextPets = prev.pets.map(p => {
-        if (p.id === petId) {
-          petToUpload = {
-            ...p,
-            labResults: (p.labResults || []).filter(item => item.id !== resultId)
-          };
-          return petToUpload;
-        }
-        return p;
-      });
-      return { ...prev, pets: nextPets };
-    });
+    const targetPet = (dataRef.current?.pets || []).find(p => p.id === petId);
+    if (!targetPet) return;
+
+    const petToUpload = {
+      ...targetPet,
+      labResults: (targetPet.labResults || []).filter(item => item.id !== resultId)
+    };
+
+    const nextPets = (dataRef.current?.pets || []).map(p => p.id === petId ? petToUpload : p);
+
+    setData(prev => ({
+      ...prev,
+      pets: nextPets
+    }));
+    dataRef.current = {
+      ...dataRef.current,
+      pets: nextPets
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
+
     showToast('Estudio eliminado del expediente', 'info');
 
-    if (petToUpload) {
-      const validClientIds = new Set((data.clients || []).map(c => c.id));
-      verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
-    }
+    const validClientIds = new Set((dataRef.current?.clients || []).map(c => c.id));
+    verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
   };
 
   const openPetPassport = (petId) => {
@@ -981,48 +1010,55 @@ export function AppProvider({ children }) {
   };
 
   const addRescueIntervention = (rescueId, intervention) => {
-    let rescueToUpload = null;
+    const targetRescue = (dataRef.current?.rescues || []).find(resc => resc.id === rescueId);
+    if (!targetRescue) return;
+
     const newIntervention = {
       ...intervention,
       date: intervention.date || new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })
     };
 
-    setData(prev => {
-      const nextRescues = prev.rescues.map(resc => {
-        if (resc.id === rescueId) {
-          rescueToUpload = {
-            ...resc,
-            interventions: [newIntervention, ...(resc.interventions || [])]
-          };
-          return rescueToUpload;
-        }
-        return resc;
-      });
-      return { ...prev, rescues: nextRescues };
-    });
+    const rescueToUpload = {
+      ...targetRescue,
+      interventions: [newIntervention, ...(targetRescue.interventions || [])]
+    };
+
+    const nextRescues = (dataRef.current?.rescues || []).map(resc => resc.id === rescueId ? rescueToUpload : resc);
+
+    setData(prev => ({
+      ...prev,
+      rescues: nextRescues
+    }));
+    dataRef.current = {
+      ...dataRef.current,
+      rescues: nextRescues
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
 
     showToast('Intervención clínica agregada a la bitácora del rescate');
-    if (rescueToUpload) {
-      verifyAndUploadDirect('rescues', rescueToUpload, () => saveRescueDirect(rescueToUpload));
-    }
+    verifyAndUploadDirect('rescues', rescueToUpload, () => saveRescueDirect(rescueToUpload));
   };
 
   const updateRescueStatus = (rescueId, newStatus) => {
-    let rescueToUpload = null;
-    setData(prev => {
-      const nextRescues = prev.rescues.map(r => {
-        if (r.id === rescueId) {
-          rescueToUpload = { ...r, healthStatus: newStatus };
-          return rescueToUpload;
-        }
-        return r;
-      });
-      return { ...prev, rescues: nextRescues };
-    });
+    const targetRescue = (dataRef.current?.rescues || []).find(r => r.id === rescueId);
+    if (!targetRescue) return;
+
+    const rescueToUpload = { ...targetRescue, healthStatus: newStatus };
+
+    const nextRescues = (dataRef.current?.rescues || []).map(r => r.id === rescueId ? rescueToUpload : r);
+
+    setData(prev => ({
+      ...prev,
+      rescues: nextRescues
+    }));
+    dataRef.current = {
+      ...dataRef.current,
+      rescues: nextRescues
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
+
     showToast(`Estado de salud del rescate actualizado: ${newStatus}`);
-    if (rescueToUpload) {
-      verifyAndUploadDirect('rescues', rescueToUpload, () => saveRescueDirect(rescueToUpload));
-    }
+    verifyAndUploadDirect('rescues', rescueToUpload, () => saveRescueDirect(rescueToUpload));
   };
 
   // Cirugías (con soporte para procedimientos adicionales como vacunas, desparasitación, etc.)
@@ -1115,55 +1151,72 @@ export function AppProvider({ children }) {
   };
 
   const updateSurgery = (surgeryId, updatedFields) => {
-    let surgeryToUpload = null;
+    const targetSurgery = (dataRef.current?.surgeries || []).find(s => s.id === surgeryId);
+    if (!targetSurgery) return { success: false };
+
     const cleanAdditional = Array.isArray(updatedFields.additionalProcedures)
       ? updatedFields.additionalProcedures.map(p => p.trim()).filter(Boolean)
       : undefined;
 
-    setData(prev => {
-      const nextSurgeries = prev.surgeries.map(s => {
-        if (s.id !== surgeryId) return s;
-        surgeryToUpload = {
-          ...s,
-          ...updatedFields,
-          ...(cleanAdditional !== undefined ? { additionalProcedures: cleanAdditional } : {})
-        };
-        return surgeryToUpload;
-      });
-      return { ...prev, surgeries: nextSurgeries };
-    });
+    const surgeryToUpload = {
+      ...targetSurgery,
+      ...updatedFields,
+      ...(cleanAdditional !== undefined ? { additionalProcedures: cleanAdditional } : {})
+    };
+
+    const nextSurgeries = (dataRef.current?.surgeries || []).map(s => s.id === surgeryId ? surgeryToUpload : s);
+
+    setData(prev => ({
+      ...prev,
+      surgeries: nextSurgeries
+    }));
+    dataRef.current = {
+      ...dataRef.current,
+      surgeries: nextSurgeries
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
 
     showToast('Registro quirúrgico y procedimientos actualizados');
 
-    if (surgeryToUpload) {
-      verifyAndUploadDirect('surgeries', surgeryToUpload, () => saveSurgeryDirect(surgeryToUpload));
-    }
+    verifyAndUploadDirect('surgeries', surgeryToUpload, () => saveSurgeryDirect(surgeryToUpload));
     return { success: true };
   };
 
   const updateSurgeryStatus = (surgeryId, newStatus) => {
-    let surgeryToUpload = null;
-    setData(prev => {
-      const nextSurgeries = prev.surgeries.map(s => {
-        if (s.id !== surgeryId) return s;
-        surgeryToUpload = { ...s, status: newStatus };
-        return surgeryToUpload;
-      });
-      return { ...prev, surgeries: nextSurgeries };
-    });
+    const targetSurgery = (dataRef.current?.surgeries || []).find(s => s.id === surgeryId);
+    if (!targetSurgery) return;
+
+    const surgeryToUpload = { ...targetSurgery, status: newStatus };
+
+    const nextSurgeries = (dataRef.current?.surgeries || []).map(s => s.id === surgeryId ? surgeryToUpload : s);
+
+    setData(prev => ({
+      ...prev,
+      surgeries: nextSurgeries
+    }));
+    dataRef.current = {
+      ...dataRef.current,
+      surgeries: nextSurgeries
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
 
     showToast(`Cirugía actualizada a: ${newStatus}`);
 
-    if (surgeryToUpload) {
-      verifyAndUploadDirect('surgeries', surgeryToUpload, () => saveSurgeryDirect(surgeryToUpload));
-    }
+    verifyAndUploadDirect('surgeries', surgeryToUpload, () => saveSurgeryDirect(surgeryToUpload));
   };
 
   const deleteSurgery = (surgeryId) => {
+    const nextSurgeries = (dataRef.current?.surgeries || []).filter(s => s.id !== surgeryId);
     setData(prev => ({
       ...prev,
-      surgeries: prev.surgeries.filter(s => s.id !== surgeryId)
+      surgeries: nextSurgeries
     }));
+    dataRef.current = {
+      ...dataRef.current,
+      surgeries: nextSurgeries
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
+
     verifyAndDeleteDirect('surgeries', surgeryId);
     showToast('Registro de cirugía eliminado', 'info');
   };
@@ -1208,7 +1261,9 @@ export function AppProvider({ children }) {
   };
 
   const assignPatientToCage = (cageId, occupantDetails) => {
-    let cageToUpload = null;
+    const targetCage = (dataRef.current?.cages || []).find(cage => cage.id === cageId);
+    if (!targetCage) return;
+
     const cleanPatientNames = Array.isArray(occupantDetails.patientNames)
       ? occupantDetails.patientNames.map(n => n.trim()).filter(Boolean)
       : (occupantDetails.patientName
@@ -1219,113 +1274,130 @@ export function AppProvider({ children }) {
       ? cleanPatientNames.join(', ')
       : (occupantDetails.patientName || '').trim();
 
-    setData(prev => {
-      const nextCages = (prev.cages || []).map(cage => {
-        if (cage.id === cageId) {
-          cageToUpload = {
-            ...cage,
-            status: 'Ocupada',
-            currentOccupant: {
-              ...occupantDetails,
-              patientName: combinedPatientName,
-              patientNames: cleanPatientNames.length > 0 ? cleanPatientNames : [combinedPatientName].filter(Boolean),
-              intakeTime: occupantDetails.intakeTime || new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
-            }
-          };
-          return cageToUpload;
-        }
-        return cage;
-      });
-      return { ...prev, cages: nextCages };
-    });
+    const cageToUpload = {
+      ...targetCage,
+      status: 'Ocupada',
+      currentOccupant: {
+        ...occupantDetails,
+        patientName: combinedPatientName,
+        patientNames: cleanPatientNames.length > 0 ? cleanPatientNames : [combinedPatientName].filter(Boolean),
+        intakeTime: occupantDetails.intakeTime || new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+      }
+    };
+
+    const nextCages = (dataRef.current?.cages || []).map(cage => cage.id === cageId ? cageToUpload : cage);
+
+    setData(prev => ({
+      ...prev,
+      cages: nextCages
+    }));
+    dataRef.current = {
+      ...dataRef.current,
+      cages: nextCages
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
 
     const countLabel = cleanPatientNames.length > 1 ? ` (${cleanPatientNames.length} mascotas en la misma jaula)` : '';
     showToast(`Ingreso en jaula actualizado exitosamente${countLabel}`);
 
-    if (cageToUpload) {
-      verifyAndUploadDirect('cages', cageToUpload, () => saveCageDirect(cageToUpload));
-    }
+    verifyAndUploadDirect('cages', cageToUpload, () => saveCageDirect(cageToUpload));
   };
 
   const releaseCage = (cageId, markForCleaning = true) => {
-    let cageToUpload = null;
-    setData(prev => {
-      const nextCages = (prev.cages || []).map(cage => {
-        if (cage.id === cageId) {
-          cageToUpload = {
-            ...cage,
-            status: markForCleaning ? 'Necesita Limpieza' : 'Disponible',
-            currentOccupant: null,
-            cleaningNotes: markForCleaning ? 'Alta reciente. Requiere desinfección profunda y cambio de tapete.' : undefined
-          };
-          return cageToUpload;
-        }
-        return cage;
-      });
-      return { ...prev, cages: nextCages };
-    });
+    const targetCage = (dataRef.current?.cages || []).find(cage => cage.id === cageId);
+    if (!targetCage) return;
+
+    const cageToUpload = {
+      ...targetCage,
+      status: markForCleaning ? 'Necesita Limpieza' : 'Disponible',
+      currentOccupant: null,
+      cleaningNotes: markForCleaning ? 'Alta reciente. Requiere desinfección profunda y cambio de tapete.' : undefined
+    };
+
+    const nextCages = (dataRef.current?.cages || []).map(cage => cage.id === cageId ? cageToUpload : cage);
+
+    setData(prev => ({
+      ...prev,
+      cages: nextCages
+    }));
+    dataRef.current = {
+      ...dataRef.current,
+      cages: nextCages
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
 
     showToast(markForCleaning ? 'Paciente dado de alta. Jaula marcada para limpieza.' : 'Paciente dado de alta. Jaula disponible.');
 
-    if (cageToUpload) {
-      verifyAndUploadDirect('cages', cageToUpload, () => saveCageDirect(cageToUpload));
-    }
+    verifyAndUploadDirect('cages', cageToUpload, () => saveCageDirect(cageToUpload));
   };
 
   const markCageClean = (cageId) => {
-    let cageToUpload = null;
-    setData(prev => {
-      const nextCages = (prev.cages || []).map(cage => {
-        if (cage.id === cageId) {
-          cageToUpload = {
-            ...cage,
-            status: 'Disponible',
-            cleaningNotes: undefined,
-            lastCleaned: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
-          };
-          return cageToUpload;
-        }
-        return cage;
-      });
-      return { ...prev, cages: nextCages };
-    });
+    const targetCage = (dataRef.current?.cages || []).find(cage => cage.id === cageId);
+    if (!targetCage) return;
+
+    const cageToUpload = {
+      ...targetCage,
+      status: 'Disponible',
+      cleaningNotes: undefined,
+      lastCleaned: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+    };
+
+    const nextCages = (dataRef.current?.cages || []).map(cage => cage.id === cageId ? cageToUpload : cage);
+
+    setData(prev => ({
+      ...prev,
+      cages: nextCages
+    }));
+    dataRef.current = {
+      ...dataRef.current,
+      cages: nextCages
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
 
     showToast('Jaula desinfectada y lista para nuevo paciente');
 
-    if (cageToUpload) {
-      verifyAndUploadDirect('cages', cageToUpload, () => saveCageDirect(cageToUpload));
-    }
+    verifyAndUploadDirect('cages', cageToUpload, () => saveCageDirect(cageToUpload));
   };
 
   const updateCageStatus = (cageId, newStatus) => {
-    let cageToUpload = null;
-    setData(prev => {
-      const nextCages = (prev.cages || []).map(cage => {
-        if (cage.id === cageId) {
-          cageToUpload = {
-            ...cage,
-            status: newStatus,
-            ...(newStatus === 'Disponible' ? { currentOccupant: null } : {})
-          };
-          return cageToUpload;
-        }
-        return cage;
-      });
-      return { ...prev, cages: nextCages };
-    });
+    const targetCage = (dataRef.current?.cages || []).find(cage => cage.id === cageId);
+    if (!targetCage) return;
+
+    const cageToUpload = {
+      ...targetCage,
+      status: newStatus,
+      ...(newStatus === 'Disponible' ? { currentOccupant: null } : {})
+    };
+
+    const nextCages = (dataRef.current?.cages || []).map(cage => cage.id === cageId ? cageToUpload : cage);
+
+    setData(prev => ({
+      ...prev,
+      cages: nextCages
+    }));
+    dataRef.current = {
+      ...dataRef.current,
+      cages: nextCages
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
 
     showToast(`Estado de jaula actualizado a: ${newStatus}`);
 
-    if (cageToUpload) {
-      verifyAndUploadDirect('cages', cageToUpload, () => saveCageDirect(cageToUpload));
-    }
+    verifyAndUploadDirect('cages', cageToUpload, () => saveCageDirect(cageToUpload));
   };
 
   const deleteCage = (cageId) => {
+    const nextCages = (dataRef.current?.cages || []).filter(cage => cage.id !== cageId);
     setData(prev => ({
       ...prev,
-      cages: (prev.cages || []).filter(cage => cage.id !== cageId)
+      cages: nextCages
     }));
+    dataRef.current = {
+      ...dataRef.current,
+      cages: nextCages
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
+
     verifyAndDeleteDirect('cages', cageId);
     showToast('Jaula eliminada del inventario', 'info');
   };

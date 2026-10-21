@@ -434,7 +434,8 @@ export function surgeryToRow(s) {
       anesthetist: s.anesthetist || 'Especialista en Anestesiología',
       patientType: s.patientType || 'Mascota con dueño',
       petId: s.petId || '',
-      clientId: s.clientId || ''
+      clientId: s.clientId || '',
+      status: s.status || 'Programada'
     }),
     post_op_care: s.postOpNotes || '',
     status: s.status || 'Programada'
@@ -459,7 +460,7 @@ export function rowToSurgery(r) {
     preOpNotes: r.pre_op_notes || '',
     intraOpNotes: meta?.intraOpNotes !== undefined ? meta.intraOpNotes : (text || ''),
     postOpNotes: r.post_op_care || '',
-    status: r.status || 'Programada'
+    status: r.status || meta?.status || 'Programada'
   };
 }
 
