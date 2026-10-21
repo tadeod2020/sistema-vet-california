@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { getLocalDateString } from './dateUtils.js';
 
 const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || 'https://qjoilxivgxxjlzefbtka.supabase.co';
 const supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_7C_MmPrLsOTcatQH9evrGg_JvmJipbN';
@@ -242,7 +243,7 @@ export function appointmentToRow(a, validClientIds = new Set(), validPetIds = ne
 
   return {
     id: String(a.id),
-    date: a.date || new Date().toISOString().split('T')[0],
+    date: a.date || getLocalDateString(),
     time: a.timeHour || a.time || '09:00',
     client_id: clientId,
     client_name: a.clientName || 'Cliente',
@@ -381,7 +382,7 @@ export function rescueToRow(r) {
   return {
     id: String(r.id),
     rescue_code: r.code || `RES-${Date.now()}`,
-    rescue_date: r.intakeDate || new Date().toISOString().split('T')[0],
+    rescue_date: r.intakeDate || getLocalDateString(),
     location_found: r.rescueLocation || 'Zona Centro, Tijuana',
     physical_description: r.physicalDescription || 'Sin descripción física especificada',
     approx_age: r.temperament || '',
@@ -420,7 +421,7 @@ export function surgeryToRow(s) {
     owner_name: s.ownerName || 'Cliente Registrado',
     owner_phone: s.patientType || 'Mascota con dueño',
     surgery_type: fullTypeLabel,
-    date: s.date || new Date().toISOString().split('T')[0],
+    date: s.date || getLocalDateString(),
     surgeon: s.surgeon || 'Dra. María José Mendoza Gutiérrez',
     anesthesia_protocol: s.anesthesiaType || '',
     pre_op_notes: s.preOpNotes || '',
@@ -469,7 +470,7 @@ export function vaccinationToRow(v) {
     vaccine_name: v.vaccineName || 'Vacuna',
     manufacturer: v.manufacturer || '',
     lot_number: v.lotNumber || '',
-    applied_date: v.appliedDate || new Date().toISOString().split('T')[0],
+    applied_date: v.appliedDate || getLocalDateString(),
     due_date: v.dueDate || '',
     vet_name: v.vetName || 'Dra. María José Mendoza Gutiérrez',
     license_number: v.licenseNumber || '',
@@ -496,8 +497,27 @@ export function rowToVaccination(r) {
   };
 }
 
+export function mapRowToModel(table, row) {
+  if (!row) return null;
+  try {
+    switch (table) {
+      case 'clients': return rowToClient(row);
+      case 'pets': return rowToPet(row);
+      case 'appointments': return rowToAppointment(row);
+      case 'cages': return rowToCage(row);
+      case 'rescues': return rowToRescue(row);
+      case 'surgeries': return rowToSurgery(row);
+      case 'vaccinations': return rowToVaccination(row);
+      default: return row;
+    }
+  } catch (err) {
+    console.warn(`Error mapeando fila de ${table}:`, err);
+    return row;
+  }
+}
+
 // ============================================================================
-// REALTIME MULTI-DEVICE BROADCAST SYNC
+// REALTIME MULTI-DEVICE BROADCAST & POSTGRES DATABASE SYNC
 // ============================================================================
 
 const CHANNEL_NAME = 'vet-california-realtime-v1';
@@ -510,15 +530,41 @@ export function createRealtimeSyncChannel(onRemoteSync) {
       config: { broadcast: { self: false } }
     });
 
+    // 1. Mensajes broadcast directos entre pestañas/navegadores activos
     channel.on('broadcast', { event: 'clinic-sync' }, (event) => {
-      console.log('📡 [Realtime] Cambio detectado en otro dispositivo:', event);
+      console.log('📡 [Realtime Broadcast] Cambio recibido de otro dispositivo:', event);
       if (typeof onRemoteSync === 'function') {
         onRemoteSync(event.payload || {});
       }
     });
 
-    channel.subscribe((status) => {
-      console.log('📡 [Realtime] Canal de sincronización multi-dispositivo:', status);
+    // 2. Escucha de eventos reales de base de datos PostgreSQL
+    const tables = ['clients', 'pets', 'appointments', 'cages', 'rescues', 'surgeries', 'vaccinations'];
+    for (const table of tables) {
+      channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table },
+        (payload) => {
+          console.log(`📡 [Realtime Postgres] Cambio en tabla "${table}":`, payload.eventType);
+          if (typeof onRemoteSync === 'function') {
+            const isDelete = payload.eventType === 'DELETE';
+            const rawRow = isDelete ? payload.old : payload.new;
+            const item = rawRow ? mapRowToModel(table, rawRow) : null;
+            onRemoteSync({
+              action: isDelete ? 'delete' : 'upsert',
+              table,
+              id: payload.old?.id || payload.new?.id,
+              item,
+              rawRow,
+              source: 'postgres_changes'
+            });
+          }
+        }
+      );
+    }
+
+    channel.subscribe((status, err) => {
+      console.log('📡 [Realtime] Estado del canal multi-dispositivo:', status, err || '');
     });
 
     return channel;

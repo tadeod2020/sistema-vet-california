@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { getLocalDateString, shiftLocalDateString } from '../lib/dateUtils.js';
 import { 
   Calendar, 
   Clock, 
@@ -52,14 +53,14 @@ export function Agenda() {
 
   const doctorOptions = CLINIC_DOCTORS && CLINIC_DOCTORS.length > 0 ? CLINIC_DOCTORS : DEFAULT_DOCTORS;
 
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAptId, setEditingAptId] = useState(null);
   const [selectedClientId, setSelectedClientId] = useState("");
 
   // Form state (supports 2 or more dogs/pets via petNames array)
   const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateString(),
     timeHour: "09:00",
     clientName: "",
     petNames: [""],
@@ -215,9 +216,7 @@ export function Agenda() {
 
   // Change date by offset
   const shiftDate = (days) => {
-    const current = new Date(selectedDate + 'T12:00:00');
-    current.setDate(current.getDate() + days);
-    setSelectedDate(current.toISOString().split('T')[0]);
+    setSelectedDate(prev => shiftLocalDateString(prev, days));
   };
 
   const selectedClientPets = selectedClientId

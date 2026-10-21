@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { getLocalDateString } from '../lib/dateUtils.js';
 import { 
   Activity, 
   Plus, 
@@ -77,7 +78,7 @@ export function Surgeries() {
     autoRegisterVaccines: true,
     surgeon: 'Dra. María José Mendoza Gutiérrez',
     anesthetist: 'Especialista en Anestesiología',
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateString(),
     anesthesiaType: 'Inhalatoria (Isoflurano) + Premedicación',
     preOpNotes: 'Ayuno de 10 horas confirmado. Hemograma básico en rangos normales.',
     intraOpNotes: '',
@@ -116,7 +117,7 @@ export function Surgeries() {
       autoRegisterVaccines: true,
       surgeon: surgery.surgeon || 'Dra. María José Mendoza Gutiérrez',
       anesthetist: surgery.anesthetist || 'Especialista en Anestesiología',
-      date: surgery.date || new Date().toISOString().split('T')[0],
+      date: surgery.date || getLocalDateString(),
       anesthesiaType: surgery.anesthesiaType || 'Inhalatoria (Isoflurano) + Premedicación',
       preOpNotes: surgery.preOpNotes || '',
       intraOpNotes: surgery.intraOpNotes || '',

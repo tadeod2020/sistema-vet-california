@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { BrandLogo } from './BrandLogo';
+import { getLocalDateString } from '../lib/dateUtils.js';
 import { 
   CalendarDays, 
   Users, 
@@ -36,7 +37,7 @@ export function Navbar() {
     syncNow
   } = useApp();
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
   const todayAptsCount = appointments.filter(a => a.date === todayStr && a.status !== 'Cancelada').length;
   const activeRescuesCount = rescues.filter(r => r.healthStatus !== 'Adoptado').length;
   const needsCleaningCount = cages.filter(c => c.status === 'Necesita Limpieza').length;

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { INITIAL_DATA, CLINIC_DOCTORS } from '../data/initialData';
+import { getLocalDateString, getLocalExpiryDateString } from '../lib/dateUtils.js';
 import {
   supabase,
   isSupabaseConfigured,
@@ -13,6 +14,7 @@ import {
   createRealtimeSyncChannel,
   broadcastSync,
   isTestRecord,
+  mapRowToModel,
   saveAppointmentDirect,
   saveClientDirect,
   savePetDirect,
@@ -82,18 +84,17 @@ function safeSaveLocalStorage(key, stateObj) {
 function reconcileCollection(localArr = [], cloudArr = []) {
   if (!cloudArr) return (localArr || []).filter(item => !isTestRecord(item));
   const map = new Map();
+  // Los registros de la nube son la verdad consolidada
   cloudArr.forEach(item => {
     if (item && item.id && !isTestRecord(item)) map.set(item.id, item);
   });
 
-  // Preservar registros locales que aún no existan en la nube O que tengan cambios pendientes de sincronización
+  // Preservar registros locales SOLAMENTE si están pendientes de sincronización (creados/editados offline)
   (localArr || []).forEach(localItem => {
-    if (localItem && localItem.id && !isTestRecord(localItem)) {
+    if (localItem && localItem.id && !isTestRecord(localItem) && localItem._pendingSync) {
       if (!map.has(localItem.id)) {
-        // Creado localmente en este dispositivo y aún no reflejado en la nube: no borrar
         map.set(localItem.id, localItem);
-      } else if (localItem._pendingSync) {
-        // Editado localmente con cambios pendientes: fusionar priorizando cambios locales
+      } else {
         map.set(localItem.id, { ...map.get(localItem.id), ...localItem });
       }
     }
@@ -107,7 +108,7 @@ function reconcileWithCloud(localData, cloudData) {
 
   const cages = cloudData.cages && cloudData.cages.length > 0
     ? normalizeAndDeduplicateCages(reconcileCollection(localData.cages, cloudData.cages))
-    : normalizeAndDeduplicateCages(localData.cages && localData.cages.length > 0 ? localData.cages : INITIAL_DATA.cages);
+    : normalizeAndDeduplicateCages(localData.cages || []);
 
   const rescues = normalizeAndDeduplicateRescues(reconcileCollection(localData.rescues, cloudData.rescues || []));
 
@@ -275,22 +276,23 @@ export function AppProvider({ children }) {
     if (!isSupabaseConfigured) return;
 
     const channel = createRealtimeSyncChannel(async (payload) => {
-      // Ignorar actualizaciones si provienen de este mismo dispositivo
+      // Ignorar actualizaciones si provienen de este mismo dispositivo por broadcast
       if (payload?.deviceId === deviceIdRef.current) return;
 
-      console.log('📡 [Realtime] Cambio recibido de otro dispositivo:', payload);
+      console.log('📡 [Realtime] Cambio recibido en cliente:', payload);
 
       // Si es una mutación puntual (upsert/delete de una tabla específica):
-      if (payload?.action === 'upsert' && payload.table && payload.item) {
-        if (!isTestRecord(payload.item)) {
+      if (payload?.action === 'upsert' && payload.table) {
+        const item = payload.item || (payload.rawRow ? mapRowToModel(payload.table, payload.rawRow) : null);
+        if (item && !isTestRecord(item)) {
           isRemoteUpdateRef.current = true;
           setData(prev => {
             const tableKey = payload.table;
             const currentList = prev[tableKey] || [];
-            const exists = currentList.some(i => i.id === payload.item.id);
+            const exists = currentList.some(i => i.id === item.id);
             const nextList = exists
-              ? currentList.map(i => i.id === payload.item.id ? { ...i, ...payload.item } : i)
-              : [payload.item, ...currentList];
+              ? currentList.map(i => i.id === item.id ? { ...i, ...item } : i)
+              : [item, ...currentList];
             const normalizedList = tableKey === 'cages'
               ? normalizeAndDeduplicateCages(nextList)
               : tableKey === 'rescues'
@@ -319,7 +321,7 @@ export function AppProvider({ children }) {
         return;
       }
 
-      // Si es una señal general, refrescar silenciosamente
+      // Si es una señal general o no pudimos mapear, refrescar silenciosamente
       await refreshFromSupabaseSilently();
     });
 
@@ -341,7 +343,7 @@ export function AppProvider({ children }) {
     const handleFocusOrVisible = async () => {
       if (document.visibilityState === 'visible') {
         const now = Date.now();
-        if (now - lastFetchedAtRef.current > 8000 && now - lastLocalEditAtRef.current > 2000) {
+        if (now - lastFetchedAtRef.current > 2500 && now - lastLocalEditAtRef.current > 1500) {
           await refreshFromSupabaseSilently();
         }
       }
@@ -361,12 +363,12 @@ export function AppProvider({ children }) {
     window.addEventListener('focus', handleFocusOrVisible);
     window.addEventListener('storage', handleStorageEvent);
 
-    // Sondeo de respaldo cada 15 segundos para máxima frescura multi-dispositivo
+    // Sondeo de respaldo cada 10 segundos para máxima frescura multi-dispositivo
     const intervalId = setInterval(() => {
       if (document.visibilityState === 'visible') {
         handleFocusOrVisible();
       }
-    }, 15000);
+    }, 10000);
 
     return () => {
       document.removeEventListener('visibilitychange', handleFocusOrVisible);
@@ -969,7 +971,7 @@ export function AppProvider({ children }) {
       ...newRescue,
       id: `resc-${Date.now()}`,
       code: `RES-${new Date().getFullYear()}-${String(data.rescues.length + 1).padStart(3, '0')}`,
-      intakeDate: newRescue.intakeDate || new Date().toISOString().split('T')[0],
+      intakeDate: newRescue.intakeDate || getLocalDateString(),
       interventions: newRescue.interventions || []
     };
     setData(prev => ({ ...prev, rescues: [created, ...prev.rescues] }));
@@ -1057,10 +1059,8 @@ export function AppProvider({ children }) {
           );
 
           if (vaccineProcs.length > 0) {
-            const appliedDate = created.date || new Date().toISOString().split('T')[0];
-            const dueDateObj = new Date(appliedDate + 'T12:00:00');
-            dueDateObj.setFullYear(dueDateObj.getFullYear() + 1);
-            const dueDate = dueDateObj.toISOString().split('T')[0];
+            const appliedDate = created.date || getLocalDateString();
+            const dueDate = getLocalExpiryDateString(1);
 
             const resolveManufacturer = (name) => {
               const lower = name.toLowerCase();
@@ -1337,7 +1337,7 @@ export function AppProvider({ children }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `backup_vet_california_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `backup_vet_california_${getLocalDateString()}.json`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('Respaldo de base de datos descargado con éxito');

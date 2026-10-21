@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp, formatPetAge } from '../context/AppContext';
+import { getLocalDateString, getLocalExpiryDateString } from '../lib/dateUtils.js';
 import { 
   FileText, 
   Plus, 
@@ -113,8 +114,8 @@ export function VaccinationPassport() {
     vaccineName: OFFICIAL_VACCINES[0].value,
     manufacturer: OFFICIAL_VACCINES[0].manufacturer,
     lotNumber: OFFICIAL_VACCINES[0].defaultLot,
-    appliedDate: new Date().toISOString().split('T')[0],
-    dueDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
+    appliedDate: getLocalDateString(),
+    dueDate: getLocalExpiryDateString(1),
     vetName: 'Dra. María José Mendoza Gutiérrez',
     licenseNumber: 'CÉD. PROF. 8492019-BC',
     notes: 'Aprobado para cruce fronterizo EE.UU. / California CBP'

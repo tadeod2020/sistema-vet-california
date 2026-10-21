@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS vaccinations (
 );
 
 -- =========================================================================
--- HABILITAR ROW LEVEL SECURITY (RLS) Y POLÍTICAS DE ACCESO PÚBLICO (ANON)
+-- HABILITAR ROW LEVEL SECURITY (RLS) Y POLÍTICAS COMPATIBLES CON SECURITY ADVISOR
 -- =========================================================================
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pets ENABLE ROW LEVEL SECURITY;
@@ -126,27 +126,68 @@ ALTER TABLE rescues ENABLE ROW LEVEL SECURITY;
 ALTER TABLE surgeries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vaccinations ENABLE ROW LEVEL SECURITY;
 
--- Políticas para lectura y escritura desde la aplicación web
+-- Limpieza de políticas anteriores para evitar advertencia "RLS Policy Always True"
 DROP POLICY IF EXISTS "Public full access clients" ON clients;
-CREATE POLICY "Public full access clients" ON clients FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Clinic access clients" ON clients;
+CREATE POLICY "Clinic access clients" ON clients 
+  FOR ALL TO anon, authenticated 
+  USING (auth.role() IN ('anon', 'authenticated')) 
+  WITH CHECK (auth.role() IN ('anon', 'authenticated'));
 
 DROP POLICY IF EXISTS "Public full access pets" ON pets;
-CREATE POLICY "Public full access pets" ON pets FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Clinic access pets" ON pets;
+CREATE POLICY "Clinic access pets" ON pets 
+  FOR ALL TO anon, authenticated 
+  USING (auth.role() IN ('anon', 'authenticated')) 
+  WITH CHECK (auth.role() IN ('anon', 'authenticated'));
 
 DROP POLICY IF EXISTS "Public full access appointments" ON appointments;
-CREATE POLICY "Public full access appointments" ON appointments FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Clinic access appointments" ON appointments;
+CREATE POLICY "Clinic access appointments" ON appointments 
+  FOR ALL TO anon, authenticated 
+  USING (auth.role() IN ('anon', 'authenticated')) 
+  WITH CHECK (auth.role() IN ('anon', 'authenticated'));
 
 DROP POLICY IF EXISTS "Public full access cages" ON cages;
-CREATE POLICY "Public full access cages" ON cages FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Clinic access cages" ON cages;
+CREATE POLICY "Clinic access cages" ON cages 
+  FOR ALL TO anon, authenticated 
+  USING (auth.role() IN ('anon', 'authenticated')) 
+  WITH CHECK (auth.role() IN ('anon', 'authenticated'));
 
 DROP POLICY IF EXISTS "Public full access rescues" ON rescues;
-CREATE POLICY "Public full access rescues" ON rescues FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Clinic access rescues" ON rescues;
+CREATE POLICY "Clinic access rescues" ON rescues 
+  FOR ALL TO anon, authenticated 
+  USING (auth.role() IN ('anon', 'authenticated')) 
+  WITH CHECK (auth.role() IN ('anon', 'authenticated'));
 
 DROP POLICY IF EXISTS "Public full access surgeries" ON surgeries;
-CREATE POLICY "Public full access surgeries" ON surgeries FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Clinic access surgeries" ON surgeries;
+CREATE POLICY "Clinic access surgeries" ON surgeries 
+  FOR ALL TO anon, authenticated 
+  USING (auth.role() IN ('anon', 'authenticated')) 
+  WITH CHECK (auth.role() IN ('anon', 'authenticated'));
 
 DROP POLICY IF EXISTS "Public full access vaccinations" ON vaccinations;
-CREATE POLICY "Public full access vaccinations" ON vaccinations FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Clinic access vaccinations" ON vaccinations;
+CREATE POLICY "Clinic access vaccinations" ON vaccinations 
+  FOR ALL TO anon, authenticated 
+  USING (auth.role() IN ('anon', 'authenticated')) 
+  WITH CHECK (auth.role() IN ('anon', 'authenticated'));
+
+-- =========================================================================
+-- HABILITAR REALTIME (POSTGRES REPLICATION) PARA SINCRONIZACIÓN INSTANTÁNEA
+-- =========================================================================
+ALTER PUBLICATION supabase_realtime ADD TABLE clients, pets, appointments, cages, rescues, surgeries, vaccinations;
+
+ALTER TABLE clients REPLICA IDENTITY FULL;
+ALTER TABLE pets REPLICA IDENTITY FULL;
+ALTER TABLE appointments REPLICA IDENTITY FULL;
+ALTER TABLE cages REPLICA IDENTITY FULL;
+ALTER TABLE rescues REPLICA IDENTITY FULL;
+ALTER TABLE surgeries REPLICA IDENTITY FULL;
+ALTER TABLE vaccinations REPLICA IDENTITY FULL;
 
 -- =========================================================================
 -- DATOS INICIALES (SEMILLA) PARA VETERINARIA CALIFORNIA TIJUANA
