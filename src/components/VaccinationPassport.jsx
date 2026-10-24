@@ -22,6 +22,9 @@ import {
   Square,
   Sparkles,
   Pencil,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
   Loader2
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
@@ -94,12 +97,25 @@ const OFFICIAL_VACCINES = [
 ];
 
 export function VaccinationPassport() {
-  const { pets, clients, vaccinations, addVaccination, selectedPetIdForPassport, updatePet, showToast } = useApp();
+  const { 
+    pets, 
+    clients, 
+    vaccinations, 
+    addVaccination, 
+    updateVaccination,
+    deleteVaccination,
+    selectedPetIdForPassport, 
+    updatePet, 
+    showToast 
+  } = useApp();
 
   const [selectedPetId, setSelectedPetId] = useState(() => selectedPetIdForPassport || (pets.length > 0 ? pets[0].id : null));
   const [activeCarnetPage, setActiveCarnetPage] = useState('spread'); // 'spread' (interior completo) | 'cover' | 'vaccines'
   const [isVacModalOpen, setIsVacModalOpen] = useState(false);
   const [isEditPetModalOpen, setIsEditPetModalOpen] = useState(false);
+  const [isEditVacModalOpen, setIsEditVacModalOpen] = useState(false);
+  const [editingVaccine, setEditingVaccine] = useState(null);
+  const [vaccinePageIndex, setVaccinePageIndex] = useState(0);
   const [petPhotoUrl, setPetPhotoUrl] = useState({});
   const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
 
@@ -119,6 +135,18 @@ export function VaccinationPassport() {
     vetName: 'Dra. María José Mendoza Gutiérrez',
     licenseNumber: 'CÉD. PROF. 8492019-BC',
     notes: 'Aprobado para cruce fronterizo EE.UU. / California CBP'
+  });
+
+  const [editVacForm, setEditVacForm] = useState({
+    id: '',
+    vaccineName: '',
+    manufacturer: '',
+    lotNumber: '',
+    appliedDate: '',
+    dueDate: '',
+    vetName: '',
+    licenseNumber: '',
+    notes: ''
   });
 
   const selectedPet = pets.find(p => p.id === selectedPetId) || pets[0] || null;
@@ -204,6 +232,44 @@ export function VaccinationPassport() {
     setIsVacModalOpen(false);
   };
 
+  const handleOpenEditVacModal = (vac) => {
+    setEditingVaccine(vac);
+    setEditVacForm({
+      id: vac.id,
+      vaccineName: vac.vaccineName || OFFICIAL_VACCINES[0].value,
+      manufacturer: vac.manufacturer || OFFICIAL_VACCINES[0].manufacturer,
+      lotNumber: vac.lotNumber || OFFICIAL_VACCINES[0].defaultLot,
+      appliedDate: vac.appliedDate || getLocalDateString(),
+      dueDate: vac.dueDate || getLocalExpiryDateString(1),
+      vetName: vac.vetName || 'Dra. María José Mendoza Gutiérrez',
+      licenseNumber: vac.licenseNumber || 'CÉD. PROF. 8492019-BC',
+      notes: vac.notes || 'Aprobado para cruce fronterizo EE.UU. / California CBP'
+    });
+    setIsEditVacModalOpen(true);
+  };
+
+  const handleSaveVaccineEdit = (e) => {
+    e.preventDefault();
+    if (!editVacForm.id) return;
+    updateVaccination(editVacForm.id, {
+      vaccineName: editVacForm.vaccineName,
+      manufacturer: editVacForm.manufacturer,
+      lotNumber: editVacForm.lotNumber,
+      appliedDate: editVacForm.appliedDate,
+      dueDate: editVacForm.dueDate,
+      vetName: editVacForm.vetName,
+      licenseNumber: editVacForm.licenseNumber,
+      notes: editVacForm.notes
+    });
+    setIsEditVacModalOpen(false);
+  };
+
+  const handleDeleteVaccine = (vacId) => {
+    if (window.confirm('¿Deseas retirar esta vacuna/sello de la cartilla oficial?')) {
+      deleteVaccination(vacId);
+    }
+  };
+
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file || !selectedPet) return;
@@ -257,15 +323,15 @@ export function VaccinationPassport() {
             <button
               type="button"
               onClick={handleOpenEditPetModal}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 shadow-xs transition-all active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white hover:bg-amber-50 text-slate-800 font-bold text-xs rounded-xl border border-amber-300 shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               <Pencil className="w-3.5 h-3.5 text-rose-900" />
-              Editar Mascota
+              Editar Datos de Cartilla (Mascota / Dueño)
             </button>
           )}
           <button
             onClick={() => setIsVacModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4 text-rose-900 stroke-[3]" />
             Aplicar Vacuna a Cartilla
@@ -580,10 +646,35 @@ export function VaccinationPassport() {
                 </p>
               </div>
 
+              {/* Pagination toolbar when more than 4 vaccines exist */}
+              {Math.ceil(petVaccines.length / 4) > 1 && (
+                <div className="no-print flex items-center justify-between p-2.5 rounded-2xl bg-amber-50/80 border border-amber-200">
+                  <button
+                    type="button"
+                    disabled={vaccinePageIndex === 0}
+                    onClick={() => setVaccinePageIndex(prev => Math.max(0, prev - 1))}
+                    className="px-3 py-1.5 bg-white hover:bg-amber-100 disabled:opacity-40 rounded-xl text-xs font-bold text-amber-950 border border-amber-300 inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                  >
+                    <ChevronLeft className="w-4 h-4" /> Hoja Anterior
+                  </button>
+                  <span className="text-xs font-black text-amber-950 tracking-wide">
+                    Hoja de Sellos {vaccinePageIndex + 1} de {Math.ceil(petVaccines.length / 4)} &bull; {petVaccines.length} vacunas aplicadas
+                  </span>
+                  <button
+                    type="button"
+                    disabled={vaccinePageIndex >= Math.ceil(petVaccines.length / 4) - 1}
+                    onClick={() => setVaccinePageIndex(prev => Math.min(Math.ceil(petVaccines.length / 4) - 1, prev + 1))}
+                    className="px-3 py-1.5 bg-white hover:bg-amber-100 disabled:opacity-40 rounded-xl text-xs font-bold text-amber-950 border border-amber-300 inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                  >
+                    Siguiente Hoja <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
               {/* 2x2 Grid of Vaccine Cards (Replicating exact format of carnet_interior_2.jpeg) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {[0, 1, 2, 3].map((slotIdx) => {
-                  const vaccine = petVaccines[slotIdx] || null;
+                  const vaccine = petVaccines[vaccinePageIndex * 4 + slotIdx] || null;
 
                   return (
                     <div 
@@ -655,19 +746,43 @@ export function VaccinationPassport() {
                         </div>
                       </div>
 
-                      {/* Bottom: Signature line */}
-                      <div className="pt-2 border-t border-slate-200 flex flex-col items-center">
-                        <div className="font-serif italic text-xs text-[#7A1416] tracking-wide mb-0.5">
-                          {vaccine?.vetName || 'Médico Veterinario Autorizado'}
-                        </div>
-                        <div className="w-full border-t border-slate-800"></div>
-                        <span className="text-[9px] font-bold text-slate-600 uppercase mt-0.5">
-                          Firma del Veterinario
-                        </span>
-                        {vaccine && (
-                          <span className="text-[8px] font-mono text-slate-400">
-                            {vaccine.licenseNumber}
+                      {/* Bottom: Signature line and Actions */}
+                      <div className="space-y-2 pt-2 border-t border-slate-200">
+                        <div className="flex flex-col items-center">
+                          <div className="font-serif italic text-xs text-[#7A1416] tracking-wide mb-0.5">
+                            {vaccine?.vetName || 'Médico Veterinario Autorizado'}
+                          </div>
+                          <div className="w-full border-t border-slate-800"></div>
+                          <span className="text-[9px] font-bold text-slate-600 uppercase mt-0.5">
+                            Firma del Veterinario
                           </span>
+                          {vaccine && (
+                            <span className="text-[8px] font-mono text-slate-400">
+                              {vaccine.licenseNumber}
+                            </span>
+                          )}
+                        </div>
+
+                        {vaccine && (
+                          <div className="no-print pt-2 flex items-center justify-end gap-1.5 border-t border-slate-200">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditVacModal(vaccine)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-[11px] rounded-lg transition-colors cursor-pointer"
+                              title="Editar datos de este sello / vacuna"
+                            >
+                              <Pencil className="w-3 h-3 text-rose-900" />
+                              Editar Sello
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteVaccine(vaccine.id)}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                              title="Retirar este sello de la cartilla"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1086,6 +1201,168 @@ export function VaccinationPassport() {
                   className="px-5 py-2 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-500 rounded-xl shadow-xs transition-all active:scale-95"
                 >
                   Guardar Cambios
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR DATOS DE VACUNA EN CARTILLA */}
+      {isEditVacModalOpen && editingVaccine && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 animate-slideUp max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-bold">
+                  <Pencil className="w-5 h-5 text-rose-900" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900">
+                    Editar Datos de Sello en Cartilla
+                  </h3>
+                  <p className="text-xs text-slate-500">Modifica los datos del biológico, lote, vigencia o firma</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsEditVacModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveVaccineEdit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Biológico / Vacuna *</label>
+                <select
+                  value={OFFICIAL_VACCINES.some(v => v.value === editVacForm.vaccineName) ? editVacForm.vaccineName : 'custom'}
+                  onChange={(e) => {
+                    const selectedVal = e.target.value;
+                    if (selectedVal === 'custom') return;
+                    const found = OFFICIAL_VACCINES.find(v => v.value === selectedVal);
+                    setEditVacForm(prev => ({
+                      ...prev,
+                      vaccineName: selectedVal,
+                      manufacturer: found ? found.manufacturer : prev.manufacturer,
+                      lotNumber: found ? found.defaultLot : prev.lotNumber
+                    }));
+                  }}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-400 focus:outline-none mb-1.5"
+                >
+                  {OFFICIAL_VACCINES.map((vac) => (
+                    <option key={vac.value} value={vac.value}>
+                      {vac.label}
+                    </option>
+                  ))}
+                  <option value="custom">-- Otro biológico personalizado --</option>
+                </select>
+                <input
+                  type="text"
+                  required
+                  value={editVacForm.vaccineName}
+                  onChange={(e) => setEditVacForm(prev => ({ ...prev, vaccineName: e.target.value }))}
+                  placeholder="Nombre de la vacuna o biológico"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-bold text-slate-900"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Laboratorio Fabricante</label>
+                  <input
+                    type="text"
+                    value={editVacForm.manufacturer}
+                    onChange={(e) => setEditVacForm(prev => ({ ...prev, manufacturer: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Número de Lote</label>
+                  <input
+                    type="text"
+                    value={editVacForm.lotNumber}
+                    onChange={(e) => setEditVacForm(prev => ({ ...prev, lotNumber: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Fecha de Aplicación</label>
+                  <input
+                    type="date"
+                    value={editVacForm.appliedDate}
+                    onChange={(e) => setEditVacForm(prev => ({ ...prev, appliedDate: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Próxima Aplicación (Vigencia)</label>
+                  <input
+                    type="date"
+                    value={editVacForm.dueDate}
+                    onChange={(e) => setEditVacForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Personal Veterinario</label>
+                  <select
+                    value={editVacForm.vetName}
+                    onChange={(e) => setEditVacForm(prev => ({ 
+                      ...prev, 
+                      vetName: e.target.value,
+                      licenseNumber: 'CÉD. PROF. 8492019-BC'
+                    }))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+                  >
+                    <option value="Dra. María José Mendoza Gutiérrez">Dra. María José Mendoza Gutiérrez</option>
+                    <option value="Dr. Miguel Ángel Michel Rea">Dr. Miguel Ángel Michel Rea</option>
+                    <option value="Dr. José Rubén Estrada Hernández">Dr. José Rubén Estrada Hernández</option>
+                    <option value="Dr. César Wilfredo Solórzano Hernández">Dr. César Wilfredo Solórzano Hernández</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Cédula Profesional</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={editVacForm.licenseNumber}
+                    className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl font-mono text-slate-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Observaciones / Cruce Fronterizo CBP</label>
+                <input
+                  type="text"
+                  value={editVacForm.notes}
+                  onChange={(e) => setEditVacForm(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Ej. Aprobado para cruce fronterizo EE.UU. / California CBP"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEditVacModalOpen(false)}
+                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 font-bold text-amber-950 bg-amber-400 hover:bg-amber-500 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
+                >
+                  Guardar Cambios en Cartilla
                 </button>
               </div>
             </form>

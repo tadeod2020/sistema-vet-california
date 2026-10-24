@@ -175,7 +175,7 @@ export function petToRow(p, validClientIds = new Set()) {
 
   const safeLabResults = (Array.isArray(p.labResults) ? p.labResults : []).map(l => {
     let safeFile = l.fileUrl || '';
-    if (safeFile && safeFile.length > 85000) {
+    if (safeFile && safeFile.length > 2000000) {
       console.warn(`[Supabase Guard] Estudio de laboratorio "${l.title}" en mascota "${p.name}" excede límite de sync (${safeFile.length} chars).`);
       safeFile = '';
     }
@@ -710,15 +710,19 @@ export async function syncAllToSupabase(data) {
     if (pets.length > 0) {
       try {
         const rows = pets.map(p => petToRow(p, validClientIds));
-        const { error } = await supabase.from('pets').upsert(rows, { onConflict: 'id' });
-        if (error) {
-          console.warn('Pets batch upsert error, retrying individual rows:', error);
-          for (const row of rows) {
-            let res = await supabase.from('pets').upsert(row, { onConflict: 'id' });
-            if (res.error && res.error.code === '23503') {
-              res = await supabase.from('pets').upsert({ ...row, client_id: null }, { onConflict: 'id' });
+        // Subir en lotes moderados (10 filas) para evitar sobrepasar límites de payload en peticiones batch
+        for (let i = 0; i < rows.length; i += 10) {
+          const chunk = rows.slice(i, i + 10);
+          const { error } = await supabase.from('pets').upsert(chunk, { onConflict: 'id' });
+          if (error) {
+            console.warn('Pets chunk upsert error, retrying individual rows:', error);
+            for (const row of chunk) {
+              let res = await supabase.from('pets').upsert(row, { onConflict: 'id' });
+              if (res.error && res.error.code === '23503') {
+                res = await supabase.from('pets').upsert({ ...row, client_id: null }, { onConflict: 'id' });
+              }
+              if (res.error) errors.push(`Mascota ${row.id}: ${res.error.message}`);
             }
-            if (res.error) errors.push(`Mascota ${row.id}: ${res.error.message}`);
           }
         }
       } catch (e) {

@@ -81,6 +81,27 @@ function safeSaveLocalStorage(key, stateObj) {
   }
 }
 
+function mergeLabResults(cloudLabs = [], localLabs = []) {
+  const labMap = new Map();
+  (localLabs || []).forEach(l => {
+    if (l && l.id) labMap.set(l.id, l);
+  });
+  (cloudLabs || []).forEach(cL => {
+    if (!cL || !cL.id) return;
+    const existing = labMap.get(cL.id);
+    if (!existing) {
+      labMap.set(cL.id, cL);
+    } else {
+      // Preservar contenido binario o fileUrl si alguno de los dos lo conserva
+      labMap.set(cL.id, {
+        ...cL,
+        fileUrl: (cL.fileUrl && cL.fileUrl.length > 0) ? cL.fileUrl : (existing.fileUrl || '')
+      });
+    }
+  });
+  return Array.from(labMap.values());
+}
+
 function reconcileCollection(localArr = [], cloudArr = []) {
   if (!cloudArr) return (localArr || []).filter(item => !isTestRecord(item));
   const map = new Map();
@@ -95,9 +116,20 @@ function reconcileCollection(localArr = [], cloudArr = []) {
       if (!map.has(localItem.id)) {
         // Creado localmente en este dispositivo y aún no reflejado en la nube: no borrar
         map.set(localItem.id, localItem);
-      } else if (localItem._pendingSync) {
-        // Editado localmente con cambios pendientes offline
-        map.set(localItem.id, { ...map.get(localItem.id), ...localItem });
+      } else {
+        const cloudItem = map.get(localItem.id);
+        if (localItem.labResults || cloudItem.labResults) {
+          const mergedLabs = mergeLabResults(cloudItem.labResults || [], localItem.labResults || []);
+          map.set(localItem.id, {
+            ...cloudItem,
+            ...(localItem._pendingSync ? localItem : {}),
+            labResults: mergedLabs,
+            photoUrl: cloudItem.photoUrl || localItem.photoUrl || ''
+          });
+        } else if (localItem._pendingSync) {
+          // Editado localmente con cambios pendientes offline
+          map.set(localItem.id, { ...cloudItem, ...localItem });
+        }
       }
     }
   });
@@ -854,7 +886,7 @@ export function AppProvider({ children }) {
       title: result.title || 'Resultado de Laboratorio',
       category: result.category || 'Análisis Clínico',
       fileType: result.fileType || 'image', // 'image' | 'pdf'
-      fileUrl: (result.fileUrl && result.fileUrl.length <= 85000) ? result.fileUrl : '',
+      fileUrl: (result.fileUrl && result.fileUrl.length <= 2000000) ? result.fileUrl : (result.fileUrl || ''),
       fileName: result.fileName || 'estudio_laboratorio',
       notes: result.notes || '',
       performedBy: result.performedBy || 'Laboratorio Clínico California'
@@ -882,6 +914,49 @@ export function AppProvider({ children }) {
     const validClientIds = new Set((dataRef.current?.clients || []).map(c => c.id));
     verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
     return newResult;
+  };
+
+  const updateLabResult = (petId, resultId, fields) => {
+    const targetPet = (dataRef.current?.pets || []).find(p => p.id === petId);
+    if (!targetPet) return null;
+
+    let updatedResult = null;
+    const nextLabResults = (targetPet.labResults || []).map(item => {
+      if (item.id === resultId) {
+        updatedResult = {
+          ...item,
+          ...fields,
+          fileUrl: fields.fileUrl !== undefined ? fields.fileUrl : item.fileUrl
+        };
+        return updatedResult;
+      }
+      return item;
+    });
+
+    if (!updatedResult) return null;
+
+    const petToUpload = {
+      ...targetPet,
+      labResults: nextLabResults
+    };
+
+    const nextPets = (dataRef.current?.pets || []).map(p => p.id === petId ? petToUpload : p);
+
+    setData(prev => ({
+      ...prev,
+      pets: nextPets
+    }));
+    dataRef.current = {
+      ...dataRef.current,
+      pets: nextPets
+    };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
+
+    showToast('Estudio de laboratorio actualizado');
+
+    const validClientIds = new Set((dataRef.current?.clients || []).map(c => c.id));
+    verifyAndUploadDirect('pets', petToUpload, () => savePetDirect(petToUpload, validClientIds));
+    return updatedResult;
   };
 
   const deleteLabResult = (petId, resultId) => {
@@ -1221,13 +1296,46 @@ export function AppProvider({ children }) {
     showToast('Registro de cirugía eliminado', 'info');
   };
 
-  // Vacunación y Passport to Travel
+  // Vacunación y Passport to Travel (Gestión y Edición de Cartillas)
   const addVaccination = (newVac) => {
     const created = { ...newVac, id: `vac-${Date.now()}` };
-    setData(prev => ({ ...prev, vaccinations: [created, ...prev.vaccinations] }));
+    const nextVaccinations = [created, ...(dataRef.current?.vaccinations || [])];
+    setData(prev => ({ ...prev, vaccinations: nextVaccinations }));
+    dataRef.current = { ...dataRef.current, vaccinations: nextVaccinations };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
     showToast(`Vacuna ${created.vaccineName} registrada en cartilla oficial`);
     verifyAndUploadDirect('vaccinations', created, () => saveVaccinationDirect(created));
     return created;
+  };
+
+  const updateVaccination = (vacId, fields) => {
+    const currentVaccinations = dataRef.current?.vaccinations || [];
+    const target = currentVaccinations.find(v => v.id === vacId);
+    if (!target) return null;
+
+    const updated = { ...target, ...fields };
+    const nextVaccinations = currentVaccinations.map(v => v.id === vacId ? updated : v);
+
+    setData(prev => ({ ...prev, vaccinations: nextVaccinations }));
+    dataRef.current = { ...dataRef.current, vaccinations: nextVaccinations };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
+
+    showToast(`Vacuna ${updated.vaccineName} actualizada en cartilla oficial`);
+    verifyAndUploadDirect('vaccinations', updated, () => saveVaccinationDirect(updated));
+    return updated;
+  };
+
+  const deleteVaccination = (vacId) => {
+    const currentVaccinations = dataRef.current?.vaccinations || [];
+    const target = currentVaccinations.find(v => v.id === vacId);
+    const nextVaccinations = currentVaccinations.filter(v => v.id !== vacId);
+
+    setData(prev => ({ ...prev, vaccinations: nextVaccinations }));
+    dataRef.current = { ...dataRef.current, vaccinations: nextVaccinations };
+    safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
+
+    verifyAndDeleteDirect('vaccinations', vacId);
+    showToast('Vacuna retirada de la cartilla oficial', 'info');
   };
 
   // Jaulas / Caniles / Hospitalización
@@ -1480,6 +1588,7 @@ export function AppProvider({ children }) {
         updatePet,
         addClinicalNote,
         addLabResult,
+        updateLabResult,
         deleteLabResult,
         registerPetDirect,
         selectedPetIdForPassport,
@@ -1493,6 +1602,8 @@ export function AppProvider({ children }) {
         updateSurgeryStatus,
         deleteSurgery,
         addVaccination,
+        updateVaccination,
+        deleteVaccination,
         // Cages / Hospitalización
         addCage,
         assignPatientToCage,

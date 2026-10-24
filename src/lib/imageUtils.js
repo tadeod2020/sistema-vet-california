@@ -5,8 +5,35 @@
  * saturen LocalStorage (límite 5MB) o provoquen timeouts, error 413 o TypeError: terminated en Supabase.
  */
 
-// Límite máximo estricto para PDFs en base64 (350 KB)
-export const MAX_PDF_BYTES = 350 * 1024;
+// Límite máximo estricto para PDFs en base64 (650 KB)
+export const MAX_PDF_BYTES = 650 * 1024;
+
+/**
+ * Convierte un DataURL (base64) a un Blob nativo del navegador.
+ * Crucial para que visores PDF integrados de Chrome/Firefox/Safari abran documentos
+ * sin bloqueos de origen cruzado ni restricciones de iframe data: URL.
+ */
+export function dataUrlToBlob(dataUrl) {
+  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
+    return null;
+  }
+  try {
+    const parts = dataUrl.split(',');
+    if (parts.length < 2) return null;
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+    const binary = atob(parts[1]);
+    const len = binary.length;
+    const u8arr = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      u8arr[i] = binary.charCodeAt(i);
+    }
+    return new Blob([u8arr], { type: mime });
+  } catch (err) {
+    console.warn('Error convirtiendo dataUrl a Blob:', err);
+    return null;
+  }
+}
 
 /**
  * Lee un archivo como DataURL (promesa segura)
@@ -128,7 +155,7 @@ export async function validateAndReadLabPdf(file) {
   
   if (file.size > MAX_PDF_BYTES) {
     const currentKb = Math.round(file.size / 1024);
-    throw new Error(`El archivo PDF pesa ${currentKb} KB. El límite máximo para sincronización fluida es de 350 KB.\n\nSugerencia: Si es un estudio impreso, tómale una foto con el celular (se optimiza automáticamente a alta nitidez en menos de 40 KB).`);
+    throw new Error(`El archivo PDF pesa ${currentKb} KB. El límite máximo para sincronización fluida es de 650 KB.\n\nSugerencia: Si es un estudio impreso, tómale una foto con el celular (se optimiza automáticamente a alta nitidez en menos de 60 KB).`);
   }
 
   return readFileAsDataUrl(file);

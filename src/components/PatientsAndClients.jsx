@@ -42,7 +42,7 @@ import {
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { SurgeryReportModal } from './SurgeryReportModal';
-import { compressPetPhoto, compressLabImage, validateAndReadLabPdf, compressImageFile } from '../lib/imageUtils';
+import { compressPetPhoto, compressLabImage, validateAndReadLabPdf, compressImageFile, dataUrlToBlob } from '../lib/imageUtils';
 
 export function PatientsAndClients() {
   const { 
@@ -54,10 +54,13 @@ export function PatientsAndClients() {
     updatePet,
     addClinicalNote,
     addLabResult,
+    updateLabResult,
     deleteLabResult,
     openPetPassport,
     showToast,
     vaccinations = [],
+    updateVaccination,
+    deleteVaccination,
     surgeries = [],
     cages = [],
     appointments = []
@@ -81,8 +84,61 @@ export function PatientsAndClients() {
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [isAddingLab, setIsAddingLab] = useState(false);
   const [previewLabItem, setPreviewLabItem] = useState(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
   const [dossierPrintSurgery, setDossierPrintSurgery] = useState(null);
+
+  // Estado para editar estudio de laboratorio existente
+  const [editingLabItem, setEditingLabItem] = useState(null);
+  const [isEditLabModalOpen, setIsEditLabModalOpen] = useState(false);
+  const [editLabForm, setEditLabForm] = useState({
+    id: '',
+    title: '',
+    category: 'Análisis de Sangre / Hemograma',
+    notes: '',
+    performedBy: 'Laboratorio Clínico California',
+    fileUrl: '',
+    fileName: '',
+    fileType: 'image'
+  });
+
+  // Estado para editar vacuna de cartilla desde el expediente
+  const [editingVaccine, setEditingVaccine] = useState(null);
+  const [isEditVacModalOpen, setIsEditVacModalOpen] = useState(false);
+  const [editVacForm, setEditVacForm] = useState({
+    id: '',
+    vaccineName: '',
+    manufacturer: '',
+    lotNumber: '',
+    appliedDate: '',
+    dueDate: '',
+    vetName: '',
+    licenseNumber: '',
+    notes: ''
+  });
+
+  // Convertir Data URL de base64 a Blob URL seguro para renderizado nativo sin bloqueos
+  React.useEffect(() => {
+    if (!previewLabItem || !previewLabItem.fileUrl) {
+      setPreviewBlobUrl(null);
+      return;
+    }
+    if (previewLabItem.fileUrl.startsWith('data:')) {
+      const blob = dataUrlToBlob(previewLabItem.fileUrl);
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        setPreviewBlobUrl(url);
+        return () => {
+          URL.revokeObjectURL(url);
+        };
+      }
+    } else if (previewLabItem.fileUrl.startsWith('blob:') || previewLabItem.fileUrl.startsWith('http')) {
+      setPreviewBlobUrl(previewLabItem.fileUrl);
+    } else {
+      setPreviewBlobUrl(null);
+    }
+  }, [previewLabItem]);
+
   const [labForm, setLabForm] = useState({
     title: '',
     category: 'Análisis de Sangre / Hemograma',
@@ -401,6 +457,129 @@ export function PatientsAndClients() {
       performedBy: 'Laboratorio Clínico California',
       notes: ''
     });
+  };
+
+  const handleReuploadLabFile = async (petId, labId, file) => {
+    if (!file) return;
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp)$/i.test(file.name);
+
+    if (!isPdf && !isImage) {
+      alert('Por favor selecciona una imagen (JPG, PNG, WEBP) o un documento PDF.');
+      return;
+    }
+
+    setIsProcessingLabFile(true);
+    try {
+      let finalUrl = '';
+      const fileType = isPdf ? 'pdf' : 'image';
+      if (isImage) {
+        finalUrl = await compressLabImage(file);
+      } else {
+        finalUrl = await validateAndReadLabPdf(file);
+      }
+      if (finalUrl) {
+        updateLabResult(petId, labId, {
+          fileUrl: finalUrl,
+          fileName: file.name,
+          fileType
+        });
+        if (previewLabItem && previewLabItem.id === labId) {
+          setPreviewLabItem(prev => ({
+            ...prev,
+            fileUrl: finalUrl,
+            fileName: file.name,
+            fileType
+          }));
+        }
+        showToast('Archivo adjuntado correctamente');
+      }
+    } catch (err) {
+      console.error('Error al reemplazar archivo de laboratorio:', err);
+      alert(err.message || 'No se pudo adjuntar el archivo.');
+    } finally {
+      setIsProcessingLabFile(false);
+    }
+  };
+
+  const handleOpenEditLabModal = (lab) => {
+    setEditingLabItem(lab);
+    setEditLabForm({
+      id: lab.id,
+      title: lab.title || '',
+      category: lab.category || 'Análisis de Sangre / Hemograma',
+      notes: lab.notes || '',
+      performedBy: lab.performedBy || 'Laboratorio Clínico California',
+      fileUrl: lab.fileUrl || '',
+      fileName: lab.fileName || '',
+      fileType: lab.fileType || 'image'
+    });
+    setIsEditLabModalOpen(true);
+  };
+
+  const handleSaveLabEdit = (e) => {
+    e.preventDefault();
+    if (!selectedPetForDossier || !editLabForm.id) return;
+    updateLabResult(selectedPetForDossier.id, editLabForm.id, {
+      title: editLabForm.title.trim() || 'Estudio de Laboratorio',
+      category: editLabForm.category,
+      notes: editLabForm.notes,
+      performedBy: editLabForm.performedBy,
+      fileUrl: editLabForm.fileUrl,
+      fileName: editLabForm.fileName,
+      fileType: editLabForm.fileType
+    });
+    if (previewLabItem && previewLabItem.id === editLabForm.id) {
+      setPreviewLabItem(prev => ({
+        ...prev,
+        title: editLabForm.title.trim() || 'Estudio de Laboratorio',
+        category: editLabForm.category,
+        notes: editLabForm.notes,
+        performedBy: editLabForm.performedBy,
+        fileUrl: editLabForm.fileUrl,
+        fileName: editLabForm.fileName,
+        fileType: editLabForm.fileType
+      }));
+    }
+    setIsEditLabModalOpen(false);
+  };
+
+  const handleOpenEditVaccine = (vac) => {
+    setEditingVaccine(vac);
+    setEditVacForm({
+      id: vac.id,
+      vaccineName: vac.vaccineName || '',
+      manufacturer: vac.manufacturer || '',
+      lotNumber: vac.lotNumber || '',
+      appliedDate: vac.appliedDate || '',
+      dueDate: vac.dueDate || '',
+      vetName: vac.vetName || 'Dra. María José Mendoza Gutiérrez',
+      licenseNumber: vac.licenseNumber || 'CÉD. PROF. 8492019-BC',
+      notes: vac.notes || ''
+    });
+    setIsEditVacModalOpen(true);
+  };
+
+  const handleSaveVaccineEdit = (e) => {
+    e.preventDefault();
+    if (!editVacForm.id) return;
+    updateVaccination(editVacForm.id, {
+      vaccineName: editVacForm.vaccineName,
+      manufacturer: editVacForm.manufacturer,
+      lotNumber: editVacForm.lotNumber,
+      appliedDate: editVacForm.appliedDate,
+      dueDate: editVacForm.dueDate,
+      vetName: editVacForm.vetName,
+      licenseNumber: editVacForm.licenseNumber,
+      notes: editVacForm.notes
+    });
+    setIsEditVacModalOpen(false);
+  };
+
+  const handleDeleteVaccine = (vacId) => {
+    if (window.confirm('¿Seguro que deseas retirar esta vacuna de la cartilla oficial?')) {
+      deleteVaccination(vacId);
+    }
   };
 
   const handleCreateClient = (e) => {
@@ -1923,7 +2102,31 @@ export function PatientsAndClients() {
 
                             {/* Media preview block */}
                             <div className="relative rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-                              {lab.fileType === 'pdf' ? (
+                              {!lab.fileUrl ? (
+                                <div className="p-5 text-center bg-amber-50/70 border border-dashed border-amber-300 rounded-xl space-y-2">
+                                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold">
+                                    <AlertCircle className="w-3.5 h-3.5 text-amber-700" />
+                                    Sin archivo legible adjunto
+                                  </div>
+                                  <p className="text-[11px] text-slate-600">
+                                    Este estudio se guardó sin documento binario o pendiente de digitalizar.
+                                  </p>
+                                  <div className="pt-1">
+                                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs">
+                                      <UploadCloud className="w-3.5 h-3.5" /> Adjuntar PDF o Foto
+                                      <input
+                                        type="file"
+                                        accept="image/*,.pdf"
+                                        onChange={(e) => {
+                                          const f = e.target.files?.[0];
+                                          if (f) handleReuploadLabFile(dossierPet.id, lab.id, f);
+                                        }}
+                                        className="hidden"
+                                      />
+                                    </label>
+                                  </div>
+                                </div>
+                              ) : lab.fileType === 'pdf' ? (
                                 <div className="p-6 text-center bg-slate-50 flex flex-col items-center justify-center space-y-2">
                                   <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center font-black text-sm border border-rose-200 shadow-2xs">
                                     PDF
@@ -1935,17 +2138,17 @@ export function PatientsAndClients() {
                                     <button
                                       type="button"
                                       onClick={() => setPreviewLabItem(lab)}
-                                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1 shadow-2xs"
+                                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1 shadow-2xs cursor-pointer"
                                     >
                                       <Eye className="w-3.5 h-3.5" /> Ver PDF
                                     </button>
-                                    <a
-                                      href={lab.fileUrl}
-                                      download={lab.fileName || 'Reporte_Laboratorio.pdf'}
-                                      className="px-3 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold inline-flex items-center gap-1 shadow-2xs"
+                                    <button
+                                      type="button"
+                                      onClick={() => setPreviewLabItem(lab)}
+                                      className="px-3 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold inline-flex items-center gap-1 shadow-2xs cursor-pointer"
                                     >
                                       <Download className="w-3.5 h-3.5" /> Descargar
-                                    </a>
+                                    </button>
                                   </div>
                                 </div>
                               ) : (
@@ -1964,13 +2167,13 @@ export function PatientsAndClients() {
                                     >
                                       <Eye className="w-3.5 h-3.5 text-blue-600" /> Ver en Grande
                                     </button>
-                                    <a
-                                      href={lab.fileUrl}
-                                      download={lab.fileName || 'Foto_Laboratorio.jpg'}
+                                    <button
+                                      type="button"
+                                      onClick={() => setPreviewLabItem(lab)}
                                       className="px-3 py-1.5 bg-white text-slate-900 rounded-xl text-xs font-black inline-flex items-center gap-1 shadow-md hover:bg-slate-100 cursor-pointer"
                                     >
                                       <Download className="w-3.5 h-3.5 text-emerald-600" /> Descargar
-                                    </a>
+                                    </button>
                                   </div>
                                 </div>
                               )}
@@ -1984,8 +2187,16 @@ export function PatientsAndClients() {
                               </div>
                             )}
 
-                            {/* Delete Action */}
-                            <div className="flex justify-end pt-1">
+                            {/* Actions */}
+                            <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditLabModal(lab)}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 hover:text-blue-700 hover:bg-slate-100 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Pencil className="w-3.5 h-3.5 text-blue-600" />
+                                Editar Datos
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1993,10 +2204,10 @@ export function PatientsAndClients() {
                                     deleteLabResult(dossierPet.id, lab.id);
                                   }
                                 }}
-                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 hover:text-rose-900 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 hover:text-rose-900 hover:bg-rose-50 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
                               >
                                 <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                Eliminar Estudio
+                                Eliminar
                               </button>
                             </div>
                           </div>
@@ -2059,9 +2270,27 @@ export function PatientsAndClients() {
                           <div key={vac.id} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2">
                             <div className="flex items-center justify-between">
                               <span className="font-extrabold text-xs text-slate-900">{vac.vaccineName}</span>
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                Vigente
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  Vigente
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditVaccine(vac)}
+                                  className="p-1 text-slate-400 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Editar datos de la vacuna en cartilla"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteVaccine(vac.id)}
+                                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Eliminar vacuna de la cartilla"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
                             <div className="text-xs text-slate-600 space-y-1">
                               <div><strong>Fabricante / Lote:</strong> {vac.manufacturer} &bull; {vac.lotNumber}</div>
@@ -2644,35 +2873,51 @@ export function PatientsAndClients() {
       {/* ========================================================================= */}
       {/* MODAL: VISOR DE FOTO O PDF DE LABORATORIO A PANTALLA COMPLETA */}
       {/* ========================================================================= */}
+      {/* ========================================================================= */}
+      {/* MODAL: VISOR DE FOTO O PDF DE LABORATORIO A PANTALLA COMPLETA */}
+      {/* ========================================================================= */}
       {previewLabItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
           <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden shadow-2xl border border-slate-200">
             {/* Modal Header */}
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={`p-1.5 rounded-lg text-xs font-black ${
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 overflow-hidden">
+                <div className={`p-1.5 rounded-lg text-xs font-black shrink-0 ${
                   previewLabItem.fileType === 'pdf' ? 'bg-rose-500 text-white' : 'bg-emerald-500 text-white'
                 }`}>
                   {previewLabItem.fileType === 'pdf' ? 'PDF' : 'IMG'}
                 </div>
-                <div>
+                <div className="truncate">
                   <h4 className="font-extrabold text-sm text-white truncate max-w-md">
                     {previewLabItem.title}
                   </h4>
-                  <div className="text-[11px] text-slate-300">
+                  <div className="text-[11px] text-slate-300 truncate">
                     {previewLabItem.category} &bull; {previewLabItem.date}
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <a
-                  href={previewLabItem.fileUrl}
-                  download={previewLabItem.fileName || 'estudio_laboratorio'}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors shadow-xs"
-                >
-                  <Download className="w-3.5 h-3.5" /> Descargar
-                </a>
+              <div className="flex items-center gap-2 shrink-0">
+                {previewBlobUrl && (
+                  <a
+                    href={previewBlobUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors shadow-xs"
+                    title="Abrir en pestaña nueva a pantalla completa"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Abrir pestaña
+                  </a>
+                )}
+                {previewBlobUrl && (
+                  <a
+                    href={previewBlobUrl}
+                    download={previewLabItem.fileName || (previewLabItem.fileType === 'pdf' ? `${previewLabItem.title}.pdf` : `${previewLabItem.title}.jpg`)}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors shadow-xs"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Descargar
+                  </a>
+                )}
                 <button
                   type="button"
                   onClick={() => setPreviewLabItem(null)}
@@ -2684,17 +2929,54 @@ export function PatientsAndClients() {
             </div>
 
             {/* Modal Content */}
-            <div className="flex-1 overflow-auto p-4 bg-slate-100 flex items-center justify-center">
-              {previewLabItem.fileType === 'pdf' ? (
-                <iframe
-                  src={previewLabItem.fileUrl}
-                  title={previewLabItem.title}
+            <div className="flex-1 overflow-auto p-4 bg-slate-100 flex items-center justify-center min-h-[50vh]">
+              {(!previewLabItem.fileUrl && !previewBlobUrl) ? (
+                <div className="p-8 text-center max-w-md bg-white rounded-3xl shadow-sm border border-slate-200 space-y-4">
+                  <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-slate-800 text-base mb-1">
+                      Archivo no disponible para previsualización
+                    </h4>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      El estudio <strong>"{previewLabItem.title}"</strong> se registró en el sistema sin el archivo adjunto o el documento se guardó previamente sin datos binarios.
+                    </p>
+                  </div>
+                  {selectedPetForDossier && (
+                    <div className="pt-2 flex flex-col sm:flex-row gap-2 justify-center">
+                      <label className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs active:scale-95">
+                        <UploadCloud className="w-4 h-4" />
+                        Adjuntar documento PDF o Foto ahora
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleReuploadLabFile(selectedPetForDossier.id, previewLabItem.id, f);
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              ) : previewLabItem.fileType === 'pdf' ? (
+                <object
+                  data={previewBlobUrl || previewLabItem.fileUrl}
+                  type="application/pdf"
                   className="w-full h-[70vh] rounded-xl border border-slate-300 bg-white shadow-inner"
-                />
+                >
+                  <iframe
+                    src={previewBlobUrl || previewLabItem.fileUrl}
+                    title={previewLabItem.title}
+                    className="w-full h-full rounded-xl border-none"
+                  />
+                </object>
               ) : (
                 <div className="max-h-[72vh] flex items-center justify-center">
                   <img
-                    src={previewLabItem.fileUrl}
+                    src={previewBlobUrl || previewLabItem.fileUrl}
                     alt={previewLabItem.title}
                     className="max-h-[70vh] max-w-full object-contain rounded-xl shadow-lg border border-slate-300"
                   />
@@ -2702,22 +2984,336 @@ export function PatientsAndClients() {
               )}
             </div>
 
-            {/* Modal Footer (Notes) */}
-            {previewLabItem.notes && (
-              <div className="p-3 bg-white border-t border-slate-200 text-xs text-slate-700 flex items-center justify-between">
-                <div>
-                  <strong className="text-slate-900">Observaciones del estudio:</strong> {previewLabItem.notes}
-                </div>
+            {/* Modal Footer (Notes and File Replace Option) */}
+            <div className="p-3 bg-white border-t border-slate-200 text-xs text-slate-700 flex flex-col sm:flex-row items-center justify-between gap-2">
+              <div className="text-left flex-1">
+                {previewLabItem.notes ? (
+                  <div>
+                    <strong className="text-slate-900">Observaciones del estudio:</strong> {previewLabItem.notes}
+                  </div>
+                ) : (
+                  <span className="text-slate-400 italic">Sin observaciones adicionales</span>
+                )}
                 {previewLabItem.performedBy && (
-                  <span className="text-[11px] text-slate-500 font-medium">
-                    {previewLabItem.performedBy}
-                  </span>
+                  <div className="text-[11px] text-slate-500 font-medium mt-0.5">
+                    Responsable: {previewLabItem.performedBy}
+                  </div>
                 )}
               </div>
-            )}
+
+              {selectedPetForDossier && (
+                <label className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-colors border border-slate-300">
+                  <UploadCloud className="w-3.5 h-3.5 text-blue-600" />
+                  {previewLabItem.fileUrl ? 'Reemplazar archivo' : 'Adjuntar archivo'}
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleReuploadLabFile(selectedPetForDossier.id, previewLabItem.id, f);
+                    }}
+                    className="hidden"
+                  />
+                </label>
+              )}
+            </div>
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: EDITAR DATOS DE ESTUDIO DE LABORATORIO */}
+      {/* ========================================================================= */}
+      {isEditLabModalOpen && editingLabItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 animate-slideUp max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-bold">
+                  <Pencil className="w-5 h-5 text-blue-700" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900">
+                    Editar Estudio de Laboratorio
+                  </h3>
+                  <p className="text-xs text-slate-500">Actualiza los datos o reemplaza el archivo adjunto</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsEditLabModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveLabEdit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Nombre / Título del Estudio *</label>
+                <input
+                  type="text"
+                  required
+                  value={editLabForm.title}
+                  onChange={(e) => setEditLabForm(prev => ({ ...prev, title: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-bold text-slate-900"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Categoría</label>
+                  <select
+                    value={editLabForm.category}
+                    onChange={(e) => setEditLabForm(prev => ({ ...prev, category: e.target.value }))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+                  >
+                    <option value="Análisis de Sangre / Hemograma">Análisis de Sangre / Hemograma</option>
+                    <option value="Química Sanguínea">Química Sanguínea</option>
+                    <option value="Rayos X / Radiografía">Rayos X / Radiografía</option>
+                    <option value="Ecografía / Ultrasonido">Ecografía / Ultrasonido</option>
+                    <option value="Urianálisis / Examen General">Urianálisis / Examen General</option>
+                    <option value="Coprológico / Parasitología">Coprológico / Parasitología</option>
+                    <option value="Histopatología / Biopsia">Histopatología / Biopsia</option>
+                    <option value="Prueba Rápida (Parvo, Giardia, etc.)">Prueba Rápida (Parvo, Giardia, etc.)</option>
+                    <option value="Otro Estudio Especializado">Otro Estudio Especializado</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Responsable / Laboratorio</label>
+                  <input
+                    type="text"
+                    value={editLabForm.performedBy}
+                    onChange={(e) => setEditLabForm(prev => ({ ...prev, performedBy: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Archivo Adjunto</label>
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
+                  <div className="truncate">
+                    <span className="font-bold text-slate-800 block truncate">
+                      {editLabForm.fileName || (editLabForm.fileUrl ? 'Archivo adjunto guardado' : 'Sin archivo adjunto')}
+                    </span>
+                    <span className="text-[10px] text-slate-500 uppercase">
+                      {editLabForm.fileType === 'pdf' ? 'Documento PDF' : 'Imagen fotográfica'}
+                    </span>
+                  </div>
+
+                  <label className="shrink-0 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-xl border border-blue-200 cursor-pointer inline-flex items-center gap-1.5 transition-colors">
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    Cambiar archivo
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+                        try {
+                          if (isPdf) {
+                            const dataUrl = await validateAndReadLabPdf(file);
+                            setEditLabForm(prev => ({
+                              ...prev,
+                              fileUrl: dataUrl,
+                              fileName: file.name,
+                              fileType: 'pdf'
+                            }));
+                          } else {
+                            const compressed = await compressLabImage(file);
+                            setEditLabForm(prev => ({
+                              ...prev,
+                              fileUrl: compressed,
+                              fileName: file.name,
+                              fileType: 'image'
+                            }));
+                          }
+                          showToast('Archivo listo para guardar');
+                        } catch (err) {
+                          alert(err.message || 'No se pudo leer el archivo');
+                        }
+                      }}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Observaciones / Conclusiones</label>
+                <textarea
+                  rows="3"
+                  value={editLabForm.notes}
+                  onChange={(e) => setEditLabForm(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Ej. Plaquetas bajas, requiere tratamiento con doxiciclina..."
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl resize-none"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEditLabModalOpen(false)}
+                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-all active:scale-95"
+                >
+                  Guardar Cambios
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: EDITAR DATOS DE VACUNA EN CARTILLA (DESDE EXPEDIENTE) */}
+      {/* ========================================================================= */}
+      {isEditVacModalOpen && editingVaccine && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 animate-slideUp max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-bold">
+                  <Pencil className="w-5 h-5 text-rose-900" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900">
+                    Editar Datos de Vacuna en Cartilla
+                  </h3>
+                  <p className="text-xs text-slate-500">Actualiza los datos del biológico, lote o fechas oficiales</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsEditVacModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveVaccineEdit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Biológico / Vacuna *</label>
+                <input
+                  type="text"
+                  required
+                  value={editVacForm.vaccineName}
+                  onChange={(e) => setEditVacForm(prev => ({ ...prev, vaccineName: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-bold text-slate-900"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Laboratorio Fabricante</label>
+                  <input
+                    type="text"
+                    value={editVacForm.manufacturer}
+                    onChange={(e) => setEditVacForm(prev => ({ ...prev, manufacturer: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Número de Lote</label>
+                  <input
+                    type="text"
+                    value={editVacForm.lotNumber}
+                    onChange={(e) => setEditVacForm(prev => ({ ...prev, lotNumber: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Fecha de Aplicación</label>
+                  <input
+                    type="date"
+                    value={editVacForm.appliedDate}
+                    onChange={(e) => setEditVacForm(prev => ({ ...prev, appliedDate: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Próxima Aplicación (Vigencia)</label>
+                  <input
+                    type="date"
+                    value={editVacForm.dueDate}
+                    onChange={(e) => setEditVacForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Personal Veterinario</label>
+                  <select
+                    value={editVacForm.vetName}
+                    onChange={(e) => setEditVacForm(prev => ({ 
+                      ...prev, 
+                      vetName: e.target.value,
+                      licenseNumber: 'CÉD. PROF. 8492019-BC'
+                    }))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+                  >
+                    <option value="Dra. María José Mendoza Gutiérrez">Dra. María José Mendoza Gutiérrez</option>
+                    <option value="Dr. Miguel Ángel Michel Rea">Dr. Miguel Ángel Michel Rea</option>
+                    <option value="Dr. José Rubén Estrada Hernández">Dr. José Rubén Estrada Hernández</option>
+                    <option value="Dr. César Wilfredo Solórzano Hernández">Dr. César Wilfredo Solórzano Hernández</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Cédula Profesional</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={editVacForm.licenseNumber}
+                    className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl font-mono text-slate-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Notas / Cruce Fronterizo CBP</label>
+                <input
+                  type="text"
+                  value={editVacForm.notes}
+                  onChange={(e) => setEditVacForm(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Ej. Aprobado para cruce fronterizo EE.UU. / California CBP"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEditVacModalOpen(false)}
+                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 font-bold text-amber-950 bg-amber-400 hover:bg-amber-500 rounded-xl shadow-xs transition-all active:scale-95"
+                >
+                  Guardar Cambios
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Official Printable Surgery Report Modal */}
       {dossierPrintSurgery && (
         <SurgeryReportModal
