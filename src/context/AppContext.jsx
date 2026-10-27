@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { INITIAL_DATA, CLINIC_DOCTORS } from '../data/initialData';
 import { getLocalDateString, getLocalExpiryDateString } from '../lib/dateUtils.js';
+import { cleanWhatsappNumber } from '../lib/whatsappUtils.js';
 import {
   supabase,
   isSupabaseConfigured,
@@ -81,50 +82,54 @@ function safeSaveLocalStorage(key, stateObj) {
   }
 }
 
-function mergeLabResults(cloudLabs = [], localLabs = []) {
-  const labMap = new Map();
-  (localLabs || []).forEach(l => {
-    if (l && l.id) labMap.set(l.id, l);
+function mergeLabResults(cloudLabs = [], localLabs = [], isPendingLocal = false) {
+  if (isPendingLocal) {
+    const cloudMap = new Map((cloudLabs || []).filter(l => l && l.id).map(l => [l.id, l]));
+    return (localLabs || []).filter(l => l && l.id).map(localLab => {
+      const cloudLab = cloudMap.get(localLab.id);
+      return {
+        ...localLab,
+        fileUrl: (localLab.fileUrl && localLab.fileUrl.length > 0) ? localLab.fileUrl : (cloudLab?.fileUrl || '')
+      };
+    });
+  }
+
+  const localMap = new Map((localLabs || []).filter(l => l && l.id).map(l => [l.id, l]));
+  return (cloudLabs || []).filter(cL => cL && cL.id).map(cL => {
+    const existing = localMap.get(cL.id);
+    return {
+      ...cL,
+      fileUrl: (cL.fileUrl && cL.fileUrl.length > 0) ? cL.fileUrl : (existing?.fileUrl || '')
+    };
   });
-  (cloudLabs || []).forEach(cL => {
-    if (!cL || !cL.id) return;
-    const existing = labMap.get(cL.id);
-    if (!existing) {
-      labMap.set(cL.id, cL);
-    } else {
-      // Preservar contenido binario o fileUrl si alguno de los dos lo conserva
-      labMap.set(cL.id, {
-        ...cL,
-        fileUrl: (cL.fileUrl && cL.fileUrl.length > 0) ? cL.fileUrl : (existing.fileUrl || '')
-      });
-    }
-  });
-  return Array.from(labMap.values());
 }
 
-function reconcileCollection(localArr = [], cloudArr = []) {
-  if (!cloudArr) return (localArr || []).filter(item => !isTestRecord(item));
+function reconcileCollection(localArr = [], cloudArr = [], deletedIds = new Set()) {
+  if (!cloudArr) return (localArr || []).filter(item => !isTestRecord(item) && !deletedIds.has(item.id));
   const map = new Map();
-  // Los registros de la nube son la verdad consolidada
+  // Los registros de la nube son la verdad consolidada (excluyendo eliminaciones locales en vuelo)
   cloudArr.forEach(item => {
-    if (item && item.id && !isTestRecord(item)) map.set(item.id, item);
+    if (item && item.id && !isTestRecord(item) && !deletedIds.has(item.id)) {
+      map.set(item.id, item);
+    }
   });
 
-  // Preservar registros locales que aún no existan en la nube O que tengan cambios pendientes de sincronización
+  // Preservar únicamente registros locales que tengan cambios pendientes (_pendingSync) aún no confirmados en la nube
   (localArr || []).forEach(localItem => {
-    if (localItem && localItem.id && !isTestRecord(localItem)) {
+    if (localItem && localItem.id && !isTestRecord(localItem) && !deletedIds.has(localItem.id)) {
       if (!map.has(localItem.id)) {
-        // Creado localmente en este dispositivo y aún no reflejado en la nube: no borrar
-        map.set(localItem.id, localItem);
+        if (localItem._pendingSync) {
+          map.set(localItem.id, localItem);
+        }
       } else {
         const cloudItem = map.get(localItem.id);
         if (localItem.labResults || cloudItem.labResults) {
-          const mergedLabs = mergeLabResults(cloudItem.labResults || [], localItem.labResults || []);
+          const mergedLabs = mergeLabResults(cloudItem.labResults || [], localItem.labResults || [], Boolean(localItem._pendingSync));
           map.set(localItem.id, {
             ...cloudItem,
             ...(localItem._pendingSync ? localItem : {}),
             labResults: mergedLabs,
-            photoUrl: cloudItem.photoUrl || localItem.photoUrl || ''
+            photoUrl: (localItem._pendingSync ? localItem.photoUrl : cloudItem.photoUrl) || cloudItem.photoUrl || localItem.photoUrl || ''
           });
         } else if (localItem._pendingSync) {
           // Editado localmente con cambios pendientes offline
@@ -137,24 +142,24 @@ function reconcileCollection(localArr = [], cloudArr = []) {
   return Array.from(map.values());
 }
 
-function reconcileWithCloud(localData, cloudData) {
+function reconcileWithCloud(localData, cloudData, deletedIds = new Set()) {
   if (!cloudData) return localData;
 
   const cages = cloudData.cages && cloudData.cages.length > 0
-    ? normalizeAndDeduplicateCages(reconcileCollection(localData.cages, cloudData.cages))
+    ? normalizeAndDeduplicateCages(reconcileCollection(localData.cages, cloudData.cages, deletedIds))
     : normalizeAndDeduplicateCages(localData.cages || []);
 
-  const rescues = normalizeAndDeduplicateRescues(reconcileCollection(localData.rescues, cloudData.rescues || []));
+  const rescues = normalizeAndDeduplicateRescues(reconcileCollection(localData.rescues, cloudData.rescues || [], deletedIds));
 
   return {
     ...INITIAL_DATA,
     ...localData,
-    clients: reconcileCollection(localData.clients, cloudData.clients || []),
-    pets: reconcileCollection(localData.pets, cloudData.pets || []),
-    appointments: reconcileCollection(localData.appointments, cloudData.appointments || []),
+    clients: reconcileCollection(localData.clients, cloudData.clients || [], deletedIds),
+    pets: reconcileCollection(localData.pets, cloudData.pets || [], deletedIds),
+    appointments: reconcileCollection(localData.appointments, cloudData.appointments || [], deletedIds),
     rescues,
-    surgeries: reconcileCollection(localData.surgeries, cloudData.surgeries || []),
-    vaccinations: reconcileCollection(localData.vaccinations, cloudData.vaccinations || []),
+    surgeries: reconcileCollection(localData.surgeries, cloudData.surgeries || [], deletedIds),
+    vaccinations: reconcileCollection(localData.vaccinations, cloudData.vaccinations || [], deletedIds),
     cages
   };
 }
@@ -225,6 +230,7 @@ export function AppProvider({ children }) {
   const lastLocalEditAtRef = useRef(0);
   const lastFetchedAtRef = useRef(0);
   const syncTimeoutRef = useRef(null);
+  const deletedIdsRef = useRef(new Set());
   const dataRef = useRef(data);
 
   useEffect(() => {
@@ -250,7 +256,7 @@ export function AppProvider({ children }) {
       isRemoteUpdateRef.current = true;
 
       setData(prevLocal => {
-        const next = reconcileWithCloud(prevLocal, cloudData);
+        const next = reconcileWithCloud(prevLocal, cloudData, deletedIdsRef.current);
         safeSaveLocalStorage(STORAGE_KEY, next);
         return next;
       });
@@ -281,7 +287,7 @@ export function AppProvider({ children }) {
         isRemoteUpdateRef.current = true;
 
         setData(prevLocal => {
-          const next = reconcileWithCloud(prevLocal, cloudData);
+          const next = reconcileWithCloud(prevLocal, cloudData, deletedIdsRef.current);
           safeSaveLocalStorage(STORAGE_KEY, next);
           return next;
         });
@@ -412,8 +418,29 @@ export function AppProvider({ children }) {
     };
   }, []);
 
+  const setItemPendingSync = (table, itemId, pending) => {
+    if (!table || !itemId) return;
+    setData(prev => {
+      const list = prev[table];
+      if (!Array.isArray(list)) return prev;
+      const nextList = list.map(i => {
+        if (!i || i.id !== itemId) return i;
+        if (pending) return { ...i, _pendingSync: true };
+        const { _pendingSync, ...clean } = i;
+        return clean;
+      });
+      const next = { ...prev, [table]: nextList };
+      dataRef.current = next;
+      return next;
+    });
+  };
+
   // Comprobación y subida inmediata por cada modificación individual
   const verifyAndUploadDirect = async (table, item, saveFn) => {
+    if (item?.id) {
+      deletedIdsRef.current.delete(item.id);
+      setItemPendingSync(table, item.id, true);
+    }
     if (!isSupabaseConfigured) return;
     lastLocalEditAtRef.current = Date.now();
     setCloudStatus('syncing');
@@ -421,6 +448,9 @@ export function AppProvider({ children }) {
     try {
       const res = await saveFn();
       if (res && res.success) {
+        if (item?.id) {
+          setItemPendingSync(table, item.id, false);
+        }
         const timeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
         setCloudStatus('synced');
         setLastSyncedAt(timeStr);
@@ -447,6 +477,10 @@ export function AppProvider({ children }) {
   };
 
   const verifyAndDeleteDirect = async (table, id) => {
+    if (id) {
+      deletedIdsRef.current.add(id);
+    }
+    lastLocalEditAtRef.current = Date.now();
     if (!isSupabaseConfigured) return;
     try {
       const res = await deleteRowFromSupabase(table, id);
@@ -485,7 +519,7 @@ export function AppProvider({ children }) {
       try {
         const cloudData = await fetchAllFromSupabase();
         if (cloudData) {
-          latestData = reconcileWithCloud(dataRef.current, cloudData);
+          latestData = reconcileWithCloud(dataRef.current, cloudData, deletedIdsRef.current);
           isRemoteUpdateRef.current = true;
           setData(latestData);
           safeSaveLocalStorage(STORAGE_KEY, latestData);
@@ -497,6 +531,21 @@ export function AppProvider({ children }) {
       // 2. Subir a Supabase
       const res = await syncAllToSupabase(latestData);
       if (res.success) {
+        const stripPending = (arr = []) => arr.map(({ _pendingSync, ...rest }) => rest);
+        const cleanedData = {
+          ...latestData,
+          clients: stripPending(latestData.clients),
+          pets: stripPending(latestData.pets),
+          appointments: stripPending(latestData.appointments),
+          rescues: stripPending(latestData.rescues),
+          surgeries: stripPending(latestData.surgeries),
+          vaccinations: stripPending(latestData.vaccinations),
+          cages: stripPending(latestData.cages)
+        };
+        setData(cleanedData);
+        dataRef.current = cleanedData;
+        safeSaveLocalStorage(STORAGE_KEY, cleanedData);
+
         const timeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
         setCloudStatus('synced');
         setLastSyncedAt(timeStr);
@@ -763,18 +812,16 @@ export function AppProvider({ children }) {
     let updatedClients = currentClients;
     if (ownerName !== undefined || ownerPhone !== undefined || ownerAddress !== undefined || ownerEmail !== undefined) {
       const cleanPhone = (ownerPhone ?? '').trim();
-      const cleanNumbers = cleanPhone.replace(/\D/g, '');
       if (targetPet.clientId && currentClients.some(c => c.id === targetPet.clientId)) {
         updatedClients = currentClients.map(c => {
           if (c.id !== targetPet.clientId) return c;
           const nextPhone = cleanPhone || c.phone;
-          const nextDigits = nextPhone.replace(/\D/g, '');
           clientToUpload = {
             ...c,
             ...(ownerName?.trim() ? { name: ownerName.trim() } : {}),
             ...(cleanPhone ? {
               phone: cleanPhone,
-              whatsapp: nextDigits ? (nextDigits.startsWith('52') ? nextDigits : `521${nextDigits}`) : c.whatsapp
+              whatsapp: cleanWhatsappNumber(nextPhone) || c.whatsapp
             } : {}),
             ...(ownerAddress !== undefined ? { address: ownerAddress.trim() } : {}),
             ...(ownerEmail !== undefined ? { email: ownerEmail.trim() } : {})
@@ -786,7 +833,7 @@ export function AppProvider({ children }) {
           id: `cli-${Date.now()}`,
           name: (ownerName || 'Propietario').trim(),
           phone: cleanPhone,
-          whatsapp: cleanNumbers ? (cleanNumbers.startsWith('52') ? cleanNumbers : `521${cleanNumbers}`) : '',
+          whatsapp: cleanWhatsappNumber(cleanPhone),
           email: (ownerEmail || '').trim(),
           address: (ownerAddress || '').trim(),
           isFrequent: false,
@@ -800,9 +847,29 @@ export function AppProvider({ children }) {
     }
 
     const nameChanged = resolvedName && resolvedName !== targetPet.name;
+    const changedVaccinations = [];
     const updatedVaccinations = nameChanged
-      ? (dataRef.current?.vaccinations || []).map(v => v.petId === petId ? { ...v, petName: resolvedName } : v)
+      ? (dataRef.current?.vaccinations || []).map(v => {
+          if (v.petId === petId) {
+            const nextV = { ...v, petName: resolvedName };
+            changedVaccinations.push(nextV);
+            return nextV;
+          }
+          return v;
+        })
       : (dataRef.current?.vaccinations || []);
+
+    const changedSurgeries = [];
+    const updatedSurgeries = nameChanged
+      ? (dataRef.current?.surgeries || []).map(s => {
+          if (s.petId === petId) {
+            const nextS = { ...s, patientName: resolvedName };
+            changedSurgeries.push(nextS);
+            return nextS;
+          }
+          return s;
+        })
+      : (dataRef.current?.surgeries || []);
 
     const nextPets = currentPets.map(p => p.id === petId ? updatedPetObj : p);
 
@@ -810,14 +877,16 @@ export function AppProvider({ children }) {
       ...prev,
       clients: updatedClients,
       pets: nextPets,
-      vaccinations: updatedVaccinations
+      vaccinations: updatedVaccinations,
+      surgeries: updatedSurgeries
     }));
 
     dataRef.current = {
       ...dataRef.current,
       clients: updatedClients,
       pets: nextPets,
-      vaccinations: updatedVaccinations
+      vaccinations: updatedVaccinations,
+      surgeries: updatedSurgeries
     };
     safeSaveLocalStorage(STORAGE_KEY, dataRef.current);
 
@@ -830,6 +899,12 @@ export function AppProvider({ children }) {
       const validClientIds = new Set(updatedClients.map(c => c.id));
       if (clientToUpload) validClientIds.add(clientToUpload.id);
       await verifyAndUploadDirect('pets', updatedPetObj, () => savePetDirect(updatedPetObj, validClientIds));
+      for (const v of changedVaccinations) {
+        await verifyAndUploadDirect('vaccinations', v, () => saveVaccinationDirect(v));
+      }
+      for (const s of changedSurgeries) {
+        await verifyAndUploadDirect('surgeries', s, () => saveSurgeryDirect(s));
+      }
     })();
   };
 
@@ -1012,7 +1087,7 @@ export function AppProvider({ children }) {
         id: `cli-${Date.now()}`,
         name: ownerName.trim(),
         phone: cleanPhone,
-        whatsapp: cleanNumbers.startsWith('52') ? cleanNumbers : `521${cleanNumbers}`,
+        whatsapp: cleanWhatsappNumber(cleanPhone),
         email: optionalFields.ownerEmail || '',
         address: optionalFields.ownerAddress || '',
         isFrequent: false,
@@ -1541,19 +1616,7 @@ export function AppProvider({ children }) {
   };
 
   const resetToDefaults = async () => {
-    if (window.confirm('¿Seguro que deseas restaurar los datos de fábrica de Servicio Veterinario California? Se limpiarán los registros no respaldados.')) {
-      setData(INITIAL_DATA);
-      if (isSupabaseConfigured) {
-        try {
-          setCloudStatus('syncing');
-          await clearAndResetSupabase(INITIAL_DATA);
-          setCloudStatus('synced');
-        } catch (e) {
-          console.error('Error resetting Supabase:', e);
-        }
-      }
-      showToast('Datos reiniciados a los valores limpios de fábrica');
-    }
+    await syncNow();
   };
 
   return (

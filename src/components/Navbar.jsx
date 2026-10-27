@@ -2,15 +2,14 @@ import React from 'react';
 import { useApp } from '../context/AppContext';
 import { BrandLogo } from './BrandLogo';
 import { getLocalDateString } from '../lib/dateUtils.js';
-import { 
-  CalendarDays, 
-  Users, 
-  HeartHandshake, 
-  Activity, 
-  FileText, 
+import {
+  CalendarDays,
+  Users,
+  HeartHandshake,
+  Activity,
+  FileText,
   Home,
-  Download, 
-  RotateCcw,
+  Download,
   MessageCircle,
   Phone,
   LogOut,
@@ -22,13 +21,12 @@ import {
 } from 'lucide-react';
 
 export function Navbar() {
-  const { 
-    activeTab, 
-    setActiveTab, 
-    exportBackup, 
-    resetToDefaults, 
-    appointments, 
-    rescues, 
+  const {
+    activeTab,
+    setActiveTab,
+    exportBackup,
+    appointments,
+    rescues,
     cages = [],
     currentUser,
     logout,
@@ -126,14 +124,6 @@ export function Navbar() {
             >
               <Download className="w-3.5 h-3.5 text-slate-500" />
               <span>Respaldar BD</span>
-            </button>
-
-            <button
-              onClick={resetToDefaults}
-              title="Reiniciar datos de demostración"
-              className="hidden sm:inline-flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
             </button>
 
             {/* User Session Badge & Logout */}

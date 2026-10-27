@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { getLocalDateString } from './dateUtils.js';
+import { cleanWhatsappNumber } from './whatsappUtils.js';
 
 const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || 'https://qjoilxivgxxjlzefbtka.supabase.co';
 const supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_7C_MmPrLsOTcatQH9evrGg_JvmJipbN';
@@ -145,12 +146,11 @@ export function clientToRow(c) {
 
 export function rowToClient(r) {
   const { text: address, meta } = decodeMeta(r.address);
-  const cleanDigits = (r.phone || '').replace(/\D/g, '');
   return {
     id: r.id,
     name: r.name || '',
     phone: r.phone || '',
-    whatsapp: meta?.whatsapp || (cleanDigits ? (cleanDigits.startsWith('52') ? cleanDigits : `521${cleanDigits}`) : ''),
+    whatsapp: meta?.whatsapp || cleanWhatsappNumber(r.phone || ''),
     email: r.email || '',
     address: address || '',
     isFrequent: Boolean(r.is_frequent),
@@ -182,7 +182,7 @@ export function petToRow(p, validClientIds = new Set()) {
     return { ...l, fileUrl: safeFile };
   });
 
-  const clientId = p.clientId && (validClientIds.size === 0 || validClientIds.has(p.clientId)) ? p.clientId : (p.clientId || null);
+  const clientId = p.clientId && (validClientIds.size === 0 || validClientIds.has(p.clientId)) ? p.clientId : null;
 
   return {
     id: String(p.id),
@@ -238,8 +238,8 @@ export function rowToPet(r) {
 }
 
 export function appointmentToRow(a, validClientIds = new Set(), validPetIds = new Set()) {
-  const clientId = a.clientId && (validClientIds.size === 0 || validClientIds.has(a.clientId)) ? a.clientId : (a.clientId || null);
-  const petId = a.petId && (validPetIds.size === 0 || validPetIds.has(a.petId)) ? a.petId : (a.petId || null);
+  const clientId = a.clientId && (validClientIds.size === 0 || validClientIds.has(a.clientId)) ? a.clientId : null;
+  const petId = a.petId && (validPetIds.size === 0 || validPetIds.has(a.petId)) ? a.petId : null;
 
   return {
     id: String(a.id),
@@ -256,7 +256,9 @@ export function appointmentToRow(a, validClientIds = new Set(), validPetIds = ne
       assignedVet: a.assignedVet || 'Dra. María José Mendoza Gutiérrez',
       petNames: Array.isArray(a.petNames) ? a.petNames : (a.petName ? a.petName.split(',').map(s => s.trim()).filter(Boolean) : []),
       slotIndex: a.slotIndex || 1,
-      phone: a.phone || ''
+      phone: a.phone || '',
+      clientId: a.clientId || '',
+      petId: a.petId || ''
     })
   };
 }
@@ -270,6 +272,8 @@ export function rowToAppointment(r) {
     id: r.id,
     date: r.date,
     timeHour: r.time || '09:00',
+    clientId: r.client_id || meta?.clientId || '',
+    petId: r.pet_id || meta?.petId || '',
     clientName: r.client_name || '',
     petName: r.pet_name || petNames.join(', '),
     petNames,
@@ -1035,10 +1039,7 @@ export async function saveRescueDirect(rescue) {
 
 export async function clearAndResetSupabase(initialData) {
   if (!supabase) return;
-  const tables = ['appointments', 'vaccinations', 'surgeries', 'rescues', 'pets', 'clients', 'cages'];
-  for (const t of tables) {
-    await supabase.from(t).delete().neq('id', '__never__');
-  }
+  // Seguridad: Nunca ejecutar borrado masivo (.delete()) sobre las tablas clínicas en producción
   if (initialData) {
     await syncAllToSupabase(initialData);
   }

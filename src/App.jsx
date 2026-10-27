@@ -49,6 +49,7 @@ class ErrorBoundary extends React.Component {
             <div className="pt-2 flex justify-center gap-3">
               <button
                 onClick={() => {
+                  localStorage.removeItem('vet_california_system_v6_clean');
                   localStorage.removeItem('vet_california_system_v1');
                   window.location.reload();
                 }}
